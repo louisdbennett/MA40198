@@ -1,0 +1,398 @@
+# Lab Sheet 4
+
+First, we read in our data:
+```{r}
+data_A <- read.table("https://people.bath.ac.uk/kai21/ASI/data/Lab4_data_A.txt")
+data_B <- read.table("https://people.bath.ac.uk/kai21/ASI/data/Lab4_data_B.txt")
+```
+
+## Normal distribution
+
+We define functions to input into optim as our gradient + loglikelihood
+```{r}
+# exp ensures nu > 0 
+expr_normal <- 
+  expression(
+    (y - theta1 - theta2 * x) ^ 2 / (2 * exp(theta3)) + log(2 * pi * exp(theta3)) / 2
+  )
+
+normal_aux <- deriv(expr_normal, c("theta1", "theta2", "theta3"), function.arg = c("theta1", "theta2", "theta3", "x", "y"), hessian = F)
+
+normal_nll <- function(theta, data) {
+  res <- normal_aux(theta[1], theta[2], theta[3], data$x, data$y)
+  
+  sum(as.numeric(res)) 
+}
+
+normal_grad <- function(theta, data) {
+  res <- normal_aux(theta[1], theta[2], theta[3], data$x, data$y)
+  
+  apply(attr(res, "gradient"), 2, sum)
+}
+```
+
+Now, use optim to approximate data A and plot result
+```{r}
+normal_fit_A <- NULL
+
+normal_fit_A[[1]] <- 
+  optim(
+    par = c(0.5, 2, 3),
+    fn = normal_nll,
+    gr = normal_grad,
+    method = 'BFGS',
+    data = data_A
+  )
+
+normal_fit_A[[2]] <- 
+  optim(
+    par = c(2, 0.5, 5),
+    fn = normal_nll,
+    gr = normal_grad,
+    method = 'BFGS',
+    data = data_A
+  )
+
+if(normal_fit_A[[1]]$value < normal_fit_A[[2]]$value) {
+  theta1 <- normal_fit_A[[1]]$par[[1]]
+  theta2 <- normal_fit_A[[1]]$par[[2]]
+  nu <- exp(normal_fit_A[[1]]$par[[3]])
+} else {
+  theta1 <- normal_fit_A[[2]]$par[[1]]
+  theta2 <- normal_fit_A[[2]]$par[[2]]
+  nu <- exp(normal_fit_A[[2]]$par[[3]])
+}
+
+normal_mu_A <- theta1 + theta2 * data_A$x
+
+ggplot2::ggplot() +
+  ggplot2::geom_point(
+    data = data_A,
+    ggplot2::aes(
+      x = x, y = y
+    )
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      x = data_A$x, y = normal_mu_A
+    )
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::labs(
+    title = "Normal Approximation To Dataset 1"
+  )
+```
+
+And do the same for data B
+```{r}
+normal_fit_B <- NULL
+
+normal_fit_B[[1]] <- 
+  optim(
+    par = c(0.5, 2, 3),
+    fn = normal_nll,
+    gr = normal_grad,
+    method = 'BFGS',
+    data = data_B
+  )
+
+normal_fit_B[[2]] <- 
+  optim(
+    par = c(2, 0.5, 5),
+    fn = normal_nll,
+    gr = normal_grad,
+    method = 'BFGS',
+    data = data_B
+  )
+
+if(normal_fit_B[[1]]$value < normal_fit_B[[2]]$value) {
+  theta1 <- normal_fit_B[[1]]$par[[1]]
+  theta2 <- normal_fit_B[[1]]$par[[2]]
+  nu <- exp(normal_fit_B[[1]]$par[[3]])
+} else {
+  theta1 <- normal_fit_B[[2]]$par[[1]]
+  theta2 <- normal_fit_B[[2]]$par[[2]]
+  nu <- exp(normal_fit_B[[2]]$par[[3]])
+}
+
+normal_mu_B <- theta1 + theta2 * data_B$x
+
+ggplot2::ggplot() +
+  ggplot2::geom_point(
+    data = data_B,
+    ggplot2::aes(
+      x = x, y = y
+    )
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      x = data_B$x, y = normal_mu_B
+    )
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::labs(
+    title = "Normal Approximation To Dataset 2"
+  )
+```
+
+We now want to repeat process for logistic and T-distributions
+
+## Logistic distribution
+
+Define functions
+```{r}
+# exp ensures nu > 0 
+expr_logistic <- 
+  expression(
+    (y - theta1 - theta2 * x) / exp(theta3) + theta3 + 2 * log(1 + exp(- (y - theta1 - theta2 * x) / exp(theta3)))
+  )
+
+logistic_aux <- deriv(expr_logistic, c("theta1", "theta2", "theta3"), function.arg = c("theta1", "theta2", "theta3", "x", "y"), hessian = F)
+
+logistic_nll <- function(theta, data) {
+  res <- logistic_aux(theta[1], theta[2], theta[3], data$x, data$y)
+  
+  sum(as.numeric(res)) 
+}
+
+logistic_grad <- function(theta, data) {
+  res <- logistic_aux(theta[1], theta[2], theta[3], data$x, data$y)
+  
+  apply(attr(res, "gradient"), 2, sum)
+}
+```
+
+Approximate data A
+```{r}
+logistic_fit_A <- NULL
+
+logistic_fit_A[[1]] <- 
+  optim(
+    par = c(0.5, 2, 3),
+    fn = logistic_nll,
+    gr = logistic_grad,
+    method = 'BFGS',
+    data = data_A
+  )
+
+logistic_fit_A[[2]] <- 
+  optim(
+    par = c(2, 0.5, 5),
+    fn = logistic_nll,
+    gr = logistic_grad,
+    method = 'BFGS',
+    data = data_A
+  )
+
+if(logistic_fit_A[[1]]$value < logistic_fit_A[[2]]$value) {
+  theta1 <- logistic_fit_A[[1]]$par[[1]]
+  theta2 <- logistic_fit_A[[1]]$par[[2]]
+  nu <- exp(logistic_fit_A[[1]]$par[[3]])
+} else {
+  theta1 <- logistic_fit_A[[2]]$par[[1]]
+  theta2 <- logistic_fit_A[[2]]$par[[2]]
+  nu <- exp(logistic_fit_A[[2]]$par[[3]])
+}
+
+logistic_mu_A <- theta1 + theta2 * data_A$x
+
+ggplot2::ggplot() +
+  ggplot2::geom_point(
+    data = data_A,
+    ggplot2::aes(
+      x = x, y = y
+    )
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      x = data_A$x, y = logistic_mu_A
+    )
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::labs(
+    title = "Logistic Approximation To Dataset 1"
+  )
+```
+
+Approximate data B
+```{r}
+logistic_fit_B <- NULL
+
+logistic_fit_B[[1]] <- 
+  optim(
+    par = c(0.5, 2, 3),
+    fn = logistic_nll,
+    gr = logistic_grad,
+    method = 'BFGS',
+    data = data_B
+  )
+
+logistic_fit_B[[2]] <- 
+  optim(
+    par = c(2, 0.5, 5),
+    fn = logistic_nll,
+    gr = logistic_grad,
+    method = 'BFGS',
+    data = data_B
+  )
+
+if(logistic_fit_B[[1]]$value < logistic_fit_B[[2]]$value) {
+  theta1 <- logistic_fit_B[[1]]$par[[1]]
+  theta2 <- logistic_fit_B[[1]]$par[[2]]
+  nu <- exp(logistic_fit_B[[1]]$par[[3]])
+} else {
+  theta1 <- logistic_fit_B[[2]]$par[[1]]
+  theta2 <- logistic_fit_B[[2]]$par[[2]]
+  nu <- exp(logistic_fit_B[[2]]$par[[3]])
+}
+
+logistic_mu_B <- theta1 + theta2 * data_A$x
+
+ggplot2::ggplot() +
+  ggplot2::geom_point(
+    data = data_B,
+    ggplot2::aes(
+      x = x, y = y
+    )
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      x = data_B$x, y = logistic_mu_B
+    )
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::labs(
+    title = "Logistic Approximation To Dataset 2"
+  )
+```
+
+
+## T-distribution
+
+Define functions
+```{r}
+# exp(theta3) + 2 ensures nu > 2
+expr_tdist <- 
+  expression(
+    - lgamma((exp(theta3) + 3) / 2) + log(pi * (exp(theta3) + 2)) / 2 + lgamma(exp(theta3) / 2 + 1) + (exp(theta3) + 3) / 2 * log(1 + (y - theta1 - theta2 * x) ^ 2 / (exp(theta3) + 2))
+  )
+
+tdist_aux <- deriv(expr_tdist, c("theta1", "theta2", "theta3"), function.arg = c("theta1", "theta2", "theta3", "x", "y"), hessian = F)
+
+tdist_nll <- function(theta, data) {
+  res <- tdist_aux(theta[1], theta[2], theta[3], data$x, data$y)
+  
+  sum(as.numeric(res)) 
+}
+
+tdist_grad <- function(theta, data) {
+  res <- tdist_aux(theta[1], theta[2], theta[3], data$x, data$y)
+  
+  apply(attr(res, "gradient"), 2, sum)
+}
+```
+
+Approximate data A
+```{r}
+tdist_fit_A <- NULL
+
+tdist_fit_A[[1]] <- 
+  optim(
+    par = c(0.5, 2, 3),
+    fn = tdist_nll,
+    gr = tdist_grad,
+    method = 'BFGS',
+    data = data_A
+  )
+
+tdist_fit_A[[2]] <- 
+  optim(
+    par = c(2, 0.5, 5),
+    fn = tdist_nll,
+    gr = tdist_grad,
+    method = 'BFGS',
+    data = data_A
+  )
+
+if(tdist_fit_A[[1]]$value < tdist_fit_A[[2]]$value) {
+  theta1 <- tdist_fit_A[[1]]$par[[1]]
+  theta2 <- tdist_fit_A[[1]]$par[[2]]
+  nu <- exp(tdist_fit_A[[1]]$par[[3]]) + 2
+} else {
+  theta1 <- tdist_fit_A[[2]]$par[[1]]
+  theta2 <- tdist_fit_A[[2]]$par[[2]]
+  nu <- exp(tdist_fit_A[[2]]$par[[3]]) + 2
+}
+
+tdist_mu_A <- theta1 + theta2 * data_A$x
+
+ggplot2::ggplot() +
+  ggplot2::geom_point(
+    data = data_A,
+    ggplot2::aes(
+      x = x, y = y
+    )
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      x = data_A$x, y = tdist_mu_A
+    )
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::labs(
+    title = "T-Distribution Approximation To Dataset 1"
+  )
+```
+
+Approximate data B
+```{r}
+tdist_fit_B <- NULL
+
+tdist_fit_B[[1]] <- 
+  optim(
+    par = c(0.5, 2, 3),
+    fn = tdist_nll,
+    gr = tdist_grad,
+    method = 'BFGS',
+    data = data_B
+  )
+
+tdist_fit_B[[2]] <- 
+  optim(
+    par = c(2, 0.5, 5),
+    fn = tdist_nll,
+    gr = tdist_grad,
+    method = 'BFGS',
+    data = data_B
+  )
+
+if(tdist_fit_B[[1]]$value < tdist_fit_B[[2]]$value) {
+  theta1 <- tdist_fit_B[[1]]$par[[1]]
+  theta2 <- tdist_fit_B[[1]]$par[[2]]
+  nu <- exp(tdist_fit_B[[1]]$par[[3]]) + 2
+} else {
+  theta1 <- tdist_fit_B[[2]]$par[[1]]
+  theta2 <- tdist_fit_B[[2]]$par[[2]]
+  nu <- exp(tdist_fit_B[[2]]$par[[3]]) + 2
+}
+
+tdist_mu_B <- theta1 + theta2 * data_B$x
+
+ggplot2::ggplot() +
+  ggplot2::geom_point(
+    data = data_B,
+    ggplot2::aes(
+      x = x, y = y
+    )
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      x = data_B$x, y = tdist_mu_B
+    )
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::labs(
+    title = "T-Distribution Approximation To Dataset 2"
+  )
+```
+

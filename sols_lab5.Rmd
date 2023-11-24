@@ -1,0 +1,131 @@
+
+```{r}
+# expression for the log density
+# note we reparametrise nu=exp(theta3)
+expr_nb_log_dens <- 
+  expression(
+    lgamma(exp(theta3)+y)
+    - lgamma(y+1) 
+    - lgamma(exp(theta3)) 
+    + exp(theta3)*theta3 
+    - (exp(theta3)+y)*log(exp(theta1+theta2*t)+exp(theta3))
+    + y*(theta1+theta2*t) 
+    )
+
+# derivatives (gradient) of the log density
+der_nb_log_dens<- 
+  deriv(expr_nb_log_dens,c("theta1",
+                           "theta2",
+                           "theta3"),
+        function.arg=c("theta1",
+                       "theta2",
+                       "theta3",
+                       "t",
+                       "y"))
+
+# negative loglikelihood
+
+nll_nb <- function(theta=c(1,1,1),t=1,y=1){
+  
+  res <-     der_nb_log_dens(theta[1],
+                             theta[2],
+                             theta[3],
+                             t,
+                             y)
+  
+  -sum(as.numeric(res)) 
+  
+}
+# gradient of the negative loglikelihood
+grad_nll_nb  <- function(theta=c(1,1,1),t=1,y=1){
+  
+  res <-  der_nb_log_dens(theta[1],
+                             theta[2],
+                             theta[3],
+                             t,
+                             y)
+  
+  -apply(attr(res,"gradient"),2,sum)
+  
+}
+
+# probability of number of cases exceeding 250 (expressed as function log densities)
+prob_nb_250 <- function(theta=c(1,1,1),t=1,y=1){
+  
+  res <-     der_nb_log_dens(theta[1],
+                             theta[2],
+                             theta[3],
+                             t,
+                             y)
+  
+  1-sum(exp(as.numeric(res))) # we use Eq1 defined above
+  
+}
+
+# derivatives (Jacobian) of the probability of number of cases exceeding 250
+grad_prob_nb_250  <- function(theta=c(1,1,1),t=1,y=1){
+  
+  res2 <-  der_nb_log_dens(theta[1],
+                             theta[2],
+                             theta[3],
+                             t,
+                             y)
+  
+  -apply(attr(res2,"gradient")*exp(as.numeric(res2)),2,sum)# we use Eq2 defined above
+  
+}
+
+# Jacobian = transposed gradient, when only one function (g_1) used
+```
+
+```{r}
+# read data
+tdat <- 1:13
+ydat <- c(6,21,23,47,62,87,86,118,114,127,220,171,157)
+
+
+fit<- 
+  optim(par = c(3,0.2,1),
+        fn = nll_nb,
+        gr = grad_nll_nb,
+        t = tdat,
+        y = ydat,
+        method="BFGS",
+        hessian = T)
+
+# in general we should test many initial values (and pick the best as done before) but here we only use one initial value for brevity.
+```
+
+```{r}
+n_grid <- 100
+t <- seq(1,15,length=n_grid)
+
+est   <-rep(NA,n_grid)
+
+for (i in 1:n_grid){
+  est[i]    <- prob_nb_250(theta=fit$par,t=t[i],y=0:250)
+}
+
+
+plot(t,est,
+     ylim=c(0,1),
+     type="l",
+     ylab = "P(AIDS cases > 250)",
+     xlab = "Years since 1980")
+```
+
+```{r}
+ci     <- matrix(NA,
+             nrow = n_grid,
+             ncol = 2)
+
+
+
+for (i in 1:n_grid){
+  J      <- grad_prob_nb_250(theta=fit$par,t=t[i],y=0:250) #Jacobian
+  se     <- sqrt(J %*% solve(fit$hessian) %*% J)          # Std error = sqrt of asymp variance
+  ci[i,] <-c(est[i]-1.96*se,est[i]+1.96*se)               # confidence interval limits
+}
+```
+
+

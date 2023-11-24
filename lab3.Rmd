@@ -1,0 +1,168 @@
+
+# Create BFGS function
+```{r}
+BFGS <- function(par, # vector of starting values
+                 fn , # objective function
+                 gr , # function to compute the gradient 
+                 B  , # initial inverse Hessian approximation
+                 control=list(maxit=1000,abstol=1e-6,c1=1e-4,c2=0.9), # control parameters
+                 ...){ #  can pass extra arguments to 'fn' and `gr`  via ...  "the ellipsis"
+  
+  norm_vec <- function(x) sqrt(sum(x^2)) 
+  
+  k    <- 1
+  
+  # convergence indicator (0 = converged successfully, 1 = max iteration reached)
+  conv <- 0  
+  
+  p            <- length(par) # dimension of space 
+  
+  par_current  <- par
+  
+  fn_current   <- fn(par_current, tdat, ydat) # evaluate objective function
+  
+  grad_current <- gr(par_current, tdat, ydat) # evaluate gradient 
+  
+  # note additional arguments are passed on using the ellipsis ...
+  
+  # other initialisations
+  
+  par_seq        <- matrix(0,nrow=control$maxit,ncol=p) #sequence of iterations
+  par_seq[k,]    <- par_current
+  k_backtracking <- rep(0,control$maxit)                # sequence of backtracking iterations
+
+  while(norm_vec(grad_current)>control$abstol){ # stopping criterion
+    
+   Delta <- -B %*% grad_current # computes descent direction
+  
+   alpha         <- 1   # initial step length
+  
+   par_proposed  <- par_current + alpha*Delta
+  
+   fn_proposed   <- fn(par_proposed, tdat, ydat) # evaluate objective fun at proposed point
+  
+   k_bt <- 0
+  
+   
+  # backtracking
+  
+  maxit_bt <- 100 # maximum number of backtracking iterations
+  
+  while ((fn_proposed >= fn_current)&(k_bt < maxit_bt)){
+    
+    k_bt           <- k_bt+1 # counter for the number of backtracking iterations
+    
+    alpha          <- alpha/2
+    
+    par_proposed  <- par_current + alpha*Delta
+    
+    fn_proposed   <- fn(par_proposed,tdat, ydat) 
+   
+  }# End of backtracking
+    
+  
+  k_backtracking[k]<-k_bt
+ 
+  # updating
+  
+  grad_old     <- grad_current 
+  
+  par_current  <- par_proposed
+  
+  fn_current   <- fn_proposed
+  
+  grad_current <- gr(par_current, tdat, ydat)
+  
+  eta          <- grad_current - grad_old
+  
+  rho <- 1/as.numeric(crossprod(eta,Delta)) 
+  # uses as.numeric to convert from a matrix of dimension 1 x 1 to a scale  
+  
+  B   <- (diag(p)-rho*tcrossprod(Delta,eta))%*%B%*%(diag(p)-rho*tcrossprod(eta,Delta)) +  alpha*rho* tcrossprod(Delta)
+  
+  k   <- k+1
+  
+  par_seq[k,] <- par_current # sequence of iteration points
+  
+  if (k == control$maxit){
+    
+    conv <-1
+    
+    break  # breaks while loop if maximum number of iterations is reached
+    
+  }
+  
+} 
+  
+return(list(par         = par_current,
+            value       = fn_current,
+            convergence = conv,
+            iterations  = k,
+            par_seq     = par_seq[1:k,],
+            inv_hess    = B,
+            backtracks  = k_backtracking[1:k]))
+}
+```
+
+# Initialise data
+```{r}
+ydat <- c(6, 21, 23, 47, 62, 87, 86, 118, 114, 127, 220, 171, 157)
+tdat <- c(1:13)
+
+log_mu <- function(theta1 = 1, theta2 = 1, theta3 = 0, theta4 = 0, t = 1) {
+  theta1 + theta2 * t + theta3 * t ^ 2 + theta4 * log(t)
+}
+```
+
+
+# Poisson distribution
+```{r}
+expr <- expression(-y * (theta1 + theta2 * t + theta3 * t ^ 2 + theta4 * log(t)) + (exp(theta1 + theta2 * t + theta3 * t ^ 2 + theta4 * log(t))) + lgamma(y + 1))
+
+poiss_aux <- deriv(expr, c("theta1", "theta2", "theta3", "theta4"), function.arg = c("theta1", "theta2", "theta3", "theta4", "t", "y"), hessian = F)
+
+poisson_nll <- function(theta, tdat, ydat) {
+  res <- poiss_aux(theta[1], theta[2], theta[3], theta[4], tdat, ydat)
+  
+  sum(as.numeric(res)) 
+}
+
+poisson_grad <- function(theta, tdat, ydat) {
+  res <- poiss_aux(theta[1], theta[2], theta[3], theta[4], tdat, ydat)
+  
+  apply(attr(res, "gradient"), 2, sum)
+}
+```
+
+# BFGS runs for Poisson
+```{r}
+optim(
+  par = c(2, 0, -0, 1),
+  fn = poisson_nll,
+  gr = poisson_grad,
+  tdat = tdat,
+  ydat = ydat,
+  method = "BFGS",
+  control=list(maxit=1000,abstol=1e-6)
+)
+```
+
+
+# Run for Neg. Binom distribution
+```{r}
+expr <- expression()
+
+negbin_nll <- function(theta, nu, tdat, ydat) {
+  res <- negbin_aux(theta[1], theta[2], theta[3], theta[4], nu, tdat, ydat)
+  
+  sum(as.numeric(res)) 
+}
+
+negbin_grad <- function(theta, nu, tdat, ydat) {
+  res <- negbin_aux(theta[1], theta[2], theta[3], theta[4], nu, tdat, ydat)
+  
+  apply(attr(res, "gradient"), 2, sum)
+}
+```
+
+

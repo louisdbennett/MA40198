@@ -1,0 +1,202 @@
+
+# Create BFGS function
+```{r}
+BFGS<-function(par, # vector of starting values
+               fn , # objective function
+               gr , # function to compute the gradient 
+               B  , # initial inverse Hessian approximation
+               control=list(maxit=1000,abstol=1e-6,c1=1e-4,c2=0.9), # control parameters
+               ...){ #  can pass extra arguments to 'fn' and `gr`  via ...  "the ellipsis"
+  
+  norm_vec <- function(x) sqrt(sum(x^2)) 
+
+  k    <- 1
+  
+  # convergence indicator (0 = converged successfully, 1 = max iteration reached)
+  conv <- 0  
+  
+  p            <- length(par) # dimension of space 
+  
+  par_current  <- par
+  
+  fn_current   <- fn(par_current, t = tdat, y = ydat) # evaluate objective function
+  
+  grad_current <- gr(par_current, t = tdat, y = ydat) # evaluate gradient 
+  
+  # note additional arguments are passed on using the ellipsis ...
+  
+  # other initialisations
+  
+  par_seq        <- matrix(0,nrow=control$maxit,ncol=p) #sequence of iterations
+  par_seq[k,]    <- par_current
+  k_backtracking <- rep(0,control$maxit)                # sequence of backtracking iterations
+
+  while(norm_vec(grad_current)>control$abstol){ # stopping criterion
+    
+   Delta <- -B %*% grad_current # computes descent direction
+  
+   alpha         <- 1   # initial step length
+  
+   par_proposed  <- par_current + alpha*Delta
+  
+   fn_proposed   <- fn(par_proposed,...) # evaluate objective fun at proposed point
+  
+   k_bt <- 0
+  
+   
+  # backtracking
+
+  
+  k_bt <- 0
+  
+  maxit_bt <- 100 # maximum number of backtracking iterations
+  
+  while ((fn_proposed >= fn_current)&(k_bt < maxit_bt)){
+    
+    k_bt           <- k_bt+1 # counter for the number of backtracking iterations
+    
+    alpha          <- alpha/2
+    
+    par_proposed  <- par_current + alpha*Delta
+    
+    fn_proposed   <- fn(par_proposed,...) 
+   
+  }# End of backtracking
+    
+  
+  k_backtracking[k]<-k_bt
+ 
+  # updating
+  
+  grad_old     <- grad_current 
+  
+  par_current  <- par_proposed
+  
+  fn_current   <- fn_proposed
+  
+  grad_current <- gr(par_current,...)
+  
+  eta          <- grad_current - grad_old
+  
+  rho <- 1/as.numeric(crossprod(eta,Delta)) 
+  # uses as.numeric to convert from a matrix of dimension 1 x 1 to a scale  
+  
+  B   <- (diag(p)-rho*tcrossprod(Delta,eta))%*%B%*%(diag(p)-rho*tcrossprod(eta,Delta)) +  alpha*rho* tcrossprod(Delta)
+  
+  k   <- k+1
+  
+  par_seq[k,] <- par_current # sequence of iteration points
+  
+  if (k == control$maxit){
+    
+    conv <-1
+    
+    break  # breaks while loop if maximum number of iterations is reached
+    
+  }
+  
+} 
+  
+return(list(par         = par_current,
+            value       = fn_current,
+            convergence = conv,
+            iterations  = k,
+            par_seq     = par_seq[1:k,],
+            inv_hess    = B,
+            backtracks  = k_backtracking[1:k]))
+}
+```
+
+# First runs of BFGS to approx Poisson distribution
+```{r}
+tdat <- 1:13
+ydat <- c(12, 14, 33, 50, 67, 74, 123, 141, 165, 204, 253, 246, 240)
+
+expr <- expression(-y*(theta1+theta2*t)+(exp(theta1+theta2*t)+lgamma(y+1)))
+
+aux <- deriv(expr,c("theta1","theta2"),function.arg=c("theta1","theta2","t","y"),hessian=TRUE) 
+
+deriv_pack_auto <- function(theta=c(1,1),t=1,y=1) {
+  res <- aux(theta[1],theta[2],t,y)
+  f <- sum(as.numeric(res)) 
+  # here I am adding up all the contributions to get the derivatives right
+  # care needs to be taken with the gradient and Hessian since they are defined 
+  # as arrays (not matrices) so we need to add up in
+  # a different way. Consult the help file for deriv
+  g<-apply(attr(res,"gradient"),2,sum)
+  H<-apply(attr(res,"hessian"),c(2,3),sum)
+  list(f=f,g=g,H=H)
+}
+
+pois_fn <- function(theta=c(1,1),t=1,y=1) {
+  temp <- deriv_pack_auto(theta=theta,t=t,y=y)
+  
+  return(temp$f)
+}
+
+pois_grad <- function(theta=c(1,1),t=1,y=1) {
+  temp <- deriv_pack_auto(theta=theta,t=t,y=y)
+  
+  return(temp$g)
+}
+
+pois_hes <- function(theta=c(1,1),t=1,y=1) {
+  temp <- deriv_pack_auto(theta=theta,t=t,y=y)
+  
+  return(temp$H)
+}
+
+theta0 <- c(log(5), 0.5)
+
+run1 <- BFGS(par = theta0, fn = pois_fn, gr = pois_grad, B = diag(c(1, 3)), t = tdat, y = ydat)
+run2 <- BFGS(par = theta0, fn = pois_fn, gr = pois_grad, B = diag(c(5, 1)), t = tdat, y = ydat)
+```
+
+# Contour plot
+```{r}
+theta1_grid <- seq(0,6,length=100)
+theta2_grid <- seq(-0.5,0.5,length=100)
+
+M <- matrix(NA, nrow=100, ncol=100)
+
+for (i in 1:100){
+  for (j in 1:100){
+    M[i,j]<-pois_fn(theta = c(theta1 = theta1_grid[i],theta2 = theta2_grid[j]), t = tdat, y = ydat)
+  }
+}
+
+contour(x = theta1_grid,
+        y = theta2_grid,
+        levels=c(90,100,150,200,300,500,800,1000),
+        z = M,
+        xlab=expression(theta[1]),
+        ylab=expression(theta[2]))
+
+theta_vals <- run1$par_seq
+
+arrows(
+  x0 = theta_vals[1:(NROW(theta_vals) - 1), 1],
+  x1 = theta_vals[2:NROW(theta_vals), 1],
+  y0 = theta_vals[1:(NROW(theta_vals) - 1), 2],
+  y1 = theta_vals[2:NROW(theta_vals), 2],
+  length = 0.1,
+  col = "#b41313"
+)
+
+theta_vals <- run2$par_seq
+
+arrows(
+  x0 = theta_vals[1:(NROW(theta_vals) - 1), 1],
+  x1 = theta_vals[2:NROW(theta_vals), 1],
+  y0 = theta_vals[1:(NROW(theta_vals) - 1), 2],
+  y1 = theta_vals[2:NROW(theta_vals), 2],
+  length = 0.1,
+  col = "#007a3e"
+)
+```
+
+# Work with Hessians and Frobius distance
+```{r}
+
+```
+

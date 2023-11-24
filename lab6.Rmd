@@ -1,0 +1,99 @@
+
+Here, we let $\sigma = e ^ {\theta_2}$ and $\tau = e ^ {\theta_4}$
+
+```{r}
+# install.package("rlang")
+# library(rlang)
+# 
+# S <- rlang::expr(
+#   sinh(exp(theta4) * log((y - theta1) / exp(theta2) + sqrt(1 + ((y - theta1) / exp(theta2)) ^ 2)) - theta3)
+# )
+# 
+# C <- rlang::expr(
+#   sqrt(1 + (sinh(exp(theta4) * log((y - theta1) / exp(theta2) + sqrt(1 + ((y - theta1) / exp(theta2)) ^ 2)) - theta3)) ^ 2)
+# )
+
+log_dens_q1_expr <- expression(
+  + theta4
+  + log(1 + (sinh(exp(theta4) * log((y - theta1) / exp(theta2) + sqrt(1 + ((y - theta1) / exp(theta2)) ^ 2)) - theta3)) ^ 2) / 2
+  - theta2
+  - log(2 * pi * (1 + ((y - theta1) / exp(theta2)) ^ 2)) / 2
+  - (sinh(exp(theta4) * log((y - theta1) / exp(theta2) + sqrt(1 + ((y - theta1) / exp(theta2)) ^ 2)) - theta3)) ^ 2 / 2
+)
+
+y_sample_q1 <- scan("http://people.bath.ac.uk/kai21/ASI/CW_2022/sample_q1.txt")
+
+deriv_pack_q1 <- deriv(log_dens_q1_expr, c("theta1", "theta2", "theta3", "theta4"), function.arg = c("theta1", "theta2", "theta3", "theta4", "y"))
+
+nll_q1 <- function(theta, y) {
+  res <- deriv_pack_q1(theta[1], theta[2], theta[3], theta[4], y)
+  
+  - sum(as.numeric(res))
+}
+
+grad_q1 <- function(theta, y) {
+  res <- deriv_pack_q1(theta[1], theta[2], theta[3], theta[4], y)
+  
+  - apply(attr(res,"gradient"), 2, sum)
+}
+```
+
+```{r}
+fit_q1 <- NULL
+
+check_fail <- function(fit) {
+  no_convergence <- fit$convergence > 0
+
+  no_variance <- inherits(try(solve(fit$hessian)), "try-error")
+
+  null_variance <- F
+  NA_variance <- F
+
+  if (!no_variance) {
+    # checks if asymptotic variance are NaN
+    NA_variance <- as.logical(sum(is.nan(diag(solve(fit$hessian)))))
+
+    if(!NA_variance){
+      # checks if asymptotic variance are zero up to machine precision
+      null_variance <- as.logical(sum(diag(solve(fit$hessian))< .Machine$double.eps ^ 0.5))
+    }
+  }
+
+  fail <- no_variance | no_convergence | NA_variance | null_variance
+
+  return(fail)
+}
+
+for(i in 1:1000) {
+  fit_q1[[i]] <-
+    optim(
+      par = c(rnorm(1), rnorm(1), rnorm(1), rnorm(1)),
+      fn = nll_q1,
+      gr = grad_q1,
+      method = 'BFGS',
+      y = y_sample_q1,
+      hessian = T
+    )
+  
+  if(check_fail(fit_q1[[i]])) {
+    fit_q1[[i]]$value <- NULL
+  }
+}
+
+nll_vals <- lapply(fit_q1, \(x) as.numeric(x$value))
+
+fit <- fit_q1[[which.min(nll_vals)]]
+```
+
+
+```{r}
+hess <- fit$hessian
+mle <- fit$par
+
+J <- grad_q1(mle, y_sample_q1)
+var <- t(J) %*% solve(hess) %*% J
+se <- sqrt(var)
+
+mle[2]
+```
+

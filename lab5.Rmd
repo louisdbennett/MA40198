@@ -1,0 +1,126 @@
+# Lab Sheet 5
+
+```{r}
+t <- 1:13
+y <- c(12, 14, 33, 50, 67, 74, 123, 141, 165, 204, 253, 246, 240)
+
+expr_nb <-
+  expression(
+    - lgamma(y + exp(theta3))
+    + lgamma(exp(theta3))
+    + lgamma(y + 1)
+    + (y + exp(theta3)) * log(exp(theta1 + theta2 * t) + exp(theta3))
+    - y * (theta1 + theta2 * t)
+    - exp(theta3) * theta3
+  )
+
+nb_aux <- deriv(expr_nb, c("theta1", "theta2", "theta3"), function.arg = c("theta1", "theta2", "theta3", "t", "y"))
+
+nb_nll <- function(theta, t, y) {
+  res <- nb_aux(theta[1], theta[2], theta[3], t, y)
+  
+  sum(as.numeric(res))
+}
+
+nb_grad <- function(theta, t, y) {
+  res <- nb_aux(theta[1], theta[2], theta[3], t, y)
+  
+  apply(attr(res,"gradient"), 2, sum)
+}
+
+nb_prob_250 <- function(mle, t) {
+  res <- nb_aux(mle[1], mle[2], mle[3], t, 0:250)
+  
+  1 - sum(exp(- as.numeric(res)))
+}
+
+nb_jac_250  <- function(mle, t){
+  res <- nb_aux(mle[1], mle[2], mle[3], t, 0:250)
+  
+  apply(attr(res,"gradient") * exp(- as.numeric(res)), 2, sum)
+}
+```
+
+
+```{r}
+nb_fit <- NULL
+
+check_fail <- function(fit) {
+  no_convergence <- fit$convergence > 0
+
+  no_variance <- inherits(try(solve(fit$hessian)), "try-error")
+
+  null_variance <- F
+  NA_variance <- F
+
+  if (!no_variance) {
+    # checks if asymptotic variance are NaN
+    NA_variance <- as.logical(sum(is.nan(diag(solve(fit$hessian)))))
+
+    if(!NA_variance){
+      # checks if asymptotic variance are zero up to machine precision
+      null_variance <- as.logical(sum(diag(solve(fit$hessian))< .Machine$double.eps ^ 0.5))
+    }
+  }
+
+  fail <- no_variance | no_convergence | NA_variance | null_variance
+
+  return(fail)
+}
+
+for(i in 1:1000) {
+  nb_fit[[i]] <-
+    optim(
+      par = c(rnorm(1), rnorm(1), rnorm(1)),
+      fn = nb_nll,
+      gr = nb_grad,
+      method = 'BFGS',
+      t = t,
+      y = y,
+      hessian = T
+    )
+
+  if(check_fail(nb_fit[[i]])) {
+    nb_fit[[i]]$value <- NULL
+  }
+}
+
+nll_vals <- lapply(nb_fit, \(x) as.numeric(x$value))
+
+fit <- nb_fit[[which.min(nll_vals)]]
+```
+
+```{r}
+create_int <- function(tval, mle, inv_hess) {
+  jac <- nb_jac_250(mle, tval)
+  
+  var <- t(jac) %*% inv_hess %*% jac
+  
+  se <- sqrt(as.numeric(var))
+  
+  prob <- nb_prob_250(mle, tval)
+  
+  data.frame(
+    t = tval,
+    prob = prob,
+    plus_one = prob + 1.96 * se,
+    minus_one = prob - 1.96 * se
+  )
+}
+
+t_vals <- dplyr::bind_rows(lapply(seq(1, 15, length = 100), create_int, mle = fit$par, inv_hess = solve(fit$hessian)))
+```
+
+```{r}
+plot(
+  x = t_vals$t, 
+  y = t_vals$prob, 
+  type = 'l',
+  ylab = "P(AIDS cases > 250)",
+  xlab = "Years since 1980"
+)
+
+lines(t_vals$t, t_vals$plus_one, col = "red")
+lines(t_vals$t, t_vals$minus_one, col = "red")
+```
+
