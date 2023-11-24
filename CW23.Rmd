@@ -1,0 +1,180 @@
+---
+title: "MA40198 Coursework 2023"
+author: "Your names here"
+
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Question 1 [4 marks]
+
+Consider the following observed sample: 
+
+```{r}
+#| code-fold: show
+y_sample_q1 <- scan("http://people.bath.ac.uk/kai21/ASI/CW_2023/y_sample_q1.txt")
+```
+
+Plot 40 contours of the negative loglikelihood function of the parameter $\boldsymbol{\lambda}$ over the region defined by $-\pi/2<\lambda_1<\pi/2$ and $0<\lambda_2<50$. The contours should be sufficiently smooth and cover the entire region. You should indicate a smaller region delimited by a contour that contains the global minimum.
+
+
+## Solution to Question 1
+
+```{r}
+# your code here
+```
+
+
+## Question 2 [6 marks]
+
+Find the maximum likelihood estimate $\widehat{\lambda}=(\hat{\lambda}_1,\hat{\lambda}_2)^T$ by 
+picking the best out of 100 optimisations (using the BFGS algorithm) where each optimisation uses a different initial value. The following data frame gives the list of  initial values to be used.
+
+```{r}
+#| code-fold: show
+ L0 <-read.table("http://people.bath.ac.uk/kai21/ASI/CW_2023/starting_vals_q2.txt")
+```
+
+## Solution to Question 2
+
+```{r}
+# your code here
+```
+
+
+
+## Question 3 [4 marks]
+
+Check the sensitivity of the MLE to the choice of $N$ by plotting (separately) the values of $\hat{\lambda}_1$ and $\hat{\lambda}_2$ as function of $\log_{10}(N)$. You should use the values $10^1,10^2, 10^3,10^4,10^5,10^6$ for $N$. What conclusions can you make from these two plots?
+
+## Solution to Question 3
+
+```{r}
+# your code here
+```
+
+
+## Question 4 [4 marks]
+
+Compute the maximum likelihood estimate of the mean parameter
+$$\mu(\boldsymbol{\lambda}_*)=E[Y|\boldsymbol{\lambda}_*]=\int_{\mathcal R} y\,f(y|\boldsymbol{\lambda}_*)dy\,.$$
+Also compute an asymptotic 95% confidence interval for $\mu(\boldsymbol{\lambda}_*)$. State clearly any assumptions you have made.
+
+
+
+## Solution to Question 4
+
+```{r}
+# your code here
+```
+
+
+
+## Question 5 [4 marks]
+
+Compute an asymptotic 95% confidence interval for the unknown parameter $\lambda^*_2$ using:
+
+* the asymptotic normal approximation to the distribution $\hat{\lambda}_2$
+
+* the asymptotic normal approximation to the distribution $\log( \hat{\lambda}_2)$
+
+
+
+## Solution to Question 5
+
+```{r}
+# your code here
+```
+
+
+
+## Question 6 [4 marks]
+
+Use the generalised likelihood ratio to test the hypotheses:
+
+$$H_0:\,\mu(\boldsymbol{\lambda}_*)=5\qquad \mbox{vs}\qquad H_a:\,\mu(\boldsymbol{\lambda}_*)\neq 5$$
+
+using a significance level $\alpha=0.05$.
+
+Separately, also test 
+
+$$H_0:\,\lambda^*_2=5\qquad \mbox{vs}\qquad H_a:\,\lambda^*_2\neq 5$$
+
+using a significance level $\alpha=0.05$.
+
+## Solution to Question 6
+
+```{r}
+# your code here
+```
+
+
+## Question 7 [10 marks]
+
+Consider the following  data frame
+
+```{r}
+#| code-fold: show
+data_q7 <-read.table("http://people.bath.ac.uk/kai21/ASI/CW_2023/data_q7.txt")
+
+```
+that contains a bivariate sample 
+$$(x_1,y_1),\,(x_2,y_2),\,\ldots,\,(x_n,y_n)$$
+of size $n=300$.
+
+
+
+
+Use the parametric family $\mathcal F_1$ defined in Question 1 to find an appropriate model for the unknown conditional distribution of $\mathcal Y$ given $\mathcal X=x$, that is $f_*(y|x)$. 
+The model should be defined by  specifying the mean function $\mu(\boldsymbol{\theta}^{(1)},x)$ as follows:
+
+$$
+\mu(\boldsymbol{\theta}^{(1)},x) =g^{-1}(\theta_1+\theta_2\,x +\theta_3\,x^2+\theta_4\,x^3 +\cdots+\theta_{p+1}\,x^p)
+$$
+
+for some choice of link function $g$ and some choice of integer $p\geq 1$.
+
+
+From a set of candidate models (that is for different choices of $g$ and $p$),  choose the model with the smallest AIC (Akaike Information Criterion). Only present the results from the maximum likelihood estimation from the best chosen model and simply comment on the other models considered.
+
+Now, repeat the same process  above to find an appropriate model for the unknown conditional distribution of $\mathcal Y$ given $\mathcal X=x$ but now based on the Gamma parametric family:
+
+$$
+\mathcal F_{gamma}=\left\{f(y|\lambda_1,\lambda_2)=\frac{\lambda_2^{\lambda_1}}{\Gamma(\lambda_1)}y^{\lambda_1-1}\exp(-\lambda_2\,y)\,:\, \lambda_1>0\,,\lambda_2>0,y>0\right\}
+$$
+
+Finally, find an appropriate model for the unknown conditional distribution of $\mathcal Y$ given $\mathcal X=x$
+but now based on the Normal parametric family:
+
+$$
+\mathcal F_{normal}=\left\{f(y|\lambda_1,\lambda_2)=\frac{1}{\lambda_2\sqrt{2\pi}}\,\exp\left(-\frac{(y-\lambda_1)^2}{2\lambda_2^2}\right)\,:\, \lambda_1\in {\mathcal R},\,\lambda_2>0,y\in {\mathcal R}\right\}
+$$
+
+
+For each of the three chosen models, you should plot the data together with the maximum likelihood estimate of the mean function as well as corresponding asymptotic 95\% confidence bands in the range $x\in(-3,3)$. Comment on the differences between the confidence bands and the mean function estimates. You must select the best model out of the three, based on the Akaike  Information Criterion. 
+
+
+## Solution to Question 7
+
+```{r}
+# your code here
+```
+
+
+## Question 8 [4 marks]
+
+
+
+
+Use the data in Question 7  to compute 95\% confidence intervals for the least worse value of the mean function  at each $x$, that is $\mu(\boldsymbol{\theta}^{(1)}_\dagger,x)$
+for each of the three parametric families: $\mathcal F_1$, the Gamma and the Normal. Plot the computed confidence bands in the range $x\in(-3,3)$ for each parametric family and comment on the differences obtained.
+
+
+## Solution to Question 8
+
+```{r}
+# your code here
+```
