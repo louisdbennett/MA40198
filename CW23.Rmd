@@ -1,8 +1,10 @@
 ---
 title: "MA40198 Coursework 2023"
 author: "Your names here"
-
 output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{r setup, include=FALSE}
@@ -11,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Question 1 [4 marks]
 
-Consider the following observed sample: 
+Consider the following observed sample:
 
 ```{r}
 #| code-fold: show
@@ -20,10 +22,9 @@ y_sample_q1 <- scan("http://people.bath.ac.uk/kai21/ASI/CW_2023/y_sample_q1.txt"
 
 Plot 40 contours of the negative loglikelihood function of the parameter $\boldsymbol{\lambda}$ over the region defined by $-\pi/2<\lambda_1<\pi/2$ and $0<\lambda_2<50$. The contours should be sufficiently smooth and cover the entire region. You should indicate a smaller region delimited by a contour that contains the global minimum.
 
-
 ## Solution to Question 1
 
-We use a reparameterisation of $\boldsymbol{\lambda} = \boldsymbol{\theta}$ with $\lambda_1 = tan^{-1}(\theta_1)$ and $\lambda_2 = e^{\theta_2}$
+We use a reparameterisation $\boldsymbol{\lambda} = \boldsymbol{\theta}$, where $\lambda_1 = tan^{-1}(\theta_1)$ and $\lambda_2 = e^{\theta_2}$.
 
 ```{r}
 log_dens_inside_sum <- expression(
@@ -59,47 +60,6 @@ nll_fn <- function(theta, y, N = 10000) {
   - fn
 }
 
-lambda1 <- seq(-pi / 2, pi / 2, length = 102)[-c(1, 102)]
-lambda2 <- seq(0, 50, length = 102)[-c(1, 102)]
-
-theta1 <- tan(lambda1)
-theta2 <- log(lambda2)
-
-M <- matrix(NA, nrow = 100, ncol = 100)
-
-for (i in seq_along(theta1)){
-  for (j in seq_along(theta2)){
-    # 100 for test runs, 10000 when finalised
-    M[i,j] <- nll_fn(theta = c(theta1[i], theta2[j]), y = y_sample_q1, N = 100)
-  }
-}
-
-levs <- seq(min(M, na.rm = T), max(M, na.rm = T), length = 40) / 16
-
-contour(
-  x = lambda1,
-  y = lambda2,
-  z = M,
-  levels = levs,
-  xlab = expression(lambda[1]),
-  ylab = expression(lambda[2])
-)
-```
-
-
-## Question 2 [6 marks]
-
-Find the maximum likelihood estimate $\widehat{\lambda}=(\hat{\lambda}_1,\hat{\lambda}_2)^T$ by 
-picking the best out of 100 optimisations (using the BFGS algorithm) where each optimisation uses a different initial value. The following data frame gives the list of  initial values to be used.
-
-```{r}
-#| code-fold: show
-L0 <- read.table("http://people.bath.ac.uk/kai21/ASI/CW_2023/starting_vals_q2.txt")
-```
-
-## Solution to Question 2
-
-```{r}
 grad_fn <- function(theta, y, N = 10000) {
   inside_sum <- NA
   
@@ -116,7 +76,55 @@ grad_fn <- function(theta, y, N = 10000) {
   
   - grad
 }
+```
 
+We plot the contour of the NLL here:
+
+```{r, warning=FALSE}
+N_val <- 1000
+
+lambda1 <- seq(-pi / 2, pi / 2, length = 102)[-c(1, 102)]
+lambda2 <- seq(0, 50, length = 102)[-c(1, 102)]
+
+theta1 <- tan(lambda1)
+theta2 <- log(lambda2)
+
+M <- matrix(NA, nrow = 100, ncol = 100)
+
+for (i in seq_along(theta1)){
+  for (j in seq_along(theta2)){
+    M[i,j] <- nll_fn(theta = c(theta1[i], theta2[j]), y = y_sample_q1, N = N_val)
+  }
+}
+
+# Divide by 8 to get smaller region that contains the global minimum
+levs <- seq(min(M, na.rm = T), max(M, na.rm = T), length = 40) / 8
+
+contour(
+  x = lambda1,
+  y = lambda2,
+  z = M,
+  levels = levs,
+  xlab = expression(lambda[1]),
+  ylab = expression(lambda[2]),
+  main = expression(paste("Contours of ", phi, "(", lambda, "|y)"))
+)
+```
+
+## Question 2 [6 marks]
+
+Find the maximum likelihood estimate $\widehat{\lambda}=(\hat{\lambda}_1,\hat{\lambda}_2)^T$ by picking the best out of 100 optimisations (using the BFGS algorithm) where each optimisation uses a different initial value. The following data frame gives the list of initial values to be used.
+
+```{r}
+#| code-fold: show
+L0 <- read.table("http://people.bath.ac.uk/kai21/ASI/CW_2023/starting_vals_q2.txt")
+```
+
+## Solution to Question 2
+
+We run optim over each starting value in the dataframe and pick the MLE, $\widehat{\lambda}$ with the lowest value of $\phi(\widehat{\lambda})$.
+
+```{r}
 reparam <- function(lambda) {
   c(tan(lambda[1]), log(lambda[2]))
 }
@@ -144,18 +152,18 @@ check_fail <- function(fit) {
   return(fail)
 }
 
-fit_for_N <- function(N) {
+pick_optim <- function(fn = nll_fn, gr = grad_fn, starting_vals, ...) {
   fit <- NULL
 
-  for(i in 1:NROW(L0)) {
+  for(i in 1:NROW(starting_vals)) {
     fit[[i]] <- 
       optim(
-        par = reparam(as.numeric(L0[i, ])),
-        fn = nll_fn,
-        gr = grad_fn,
+        # par = reparam(as.numeric(L0[i, ])),
+        par = starting_vals[i, ],
+        fn = fn,
+        gr = gr,
         method = 'BFGS',
-        y = y_sample_q1,
-        N = N,
+        ...,
         hessian = T
       )
     
@@ -169,13 +177,17 @@ fit_for_N <- function(N) {
   fit[[which.min(nll_vals)]]
 }
 
-fit <- fit_for_N(100)
+L0_starting_vals <- matrix(NA, nrow = NROW(L0), ncol = 2)
 
-mle_lambda1 <- atan(fit$par[1])
-mle_lambda2 <- exp(fit$par[2])
+for(i in 1:NROW(L0)) {
+  L0_starting_vals[i, ] <- reparam(as.numeric(L0[i, ]))
+}
+
+# change this to 10000 for full run
+fit_q2 <- pick_optim(fn = nll_fn, gr = grad_fn, starting_vals = L0_starting_vals, N = N_val, y = y_sample_q1)
+
+fit_q2
 ```
-
-
 
 ## Question 3 [4 marks]
 
@@ -190,37 +202,117 @@ reverse_reparam <- function(theta) {
 
 N_vals <- 10 ^ seq(1, 3)
 
-fit <- sapply(N_vals, \(x) reverse_reparam(fit_for_N(x)$par))
+fit_q3 <- lapply(N_vals, \(x) reverse_reparam(pick_optim(fn = nll_fn, gr = grad_fn, starting_vals = L0_starting_vals, N = x, y = y_sample_q1)$par))
+
+lambda1_vals <- sapply(fit_q3, \(x) x[1])
+lambda2_vals <- sapply(fit_q3, \(x) x[2])
 ```
 
+We now plot the data:
+
+```{r}
+par(mfrow = c(1, 2))
+
+plot(
+  x = log(N_vals, 10),
+  y = lambda1_vals,
+  type = 'l',
+  xlab = "log(N)",
+  ylab = expression(lambda[1])
+)
+
+plot(
+  x = log(N_vals, 10),
+  y = lambda2_vals,
+  type = 'l',
+  xlab = "log(N)",
+  ylab = expression(lambda[1])
+)
+
+title(expression(bold(paste("Sensitivity of ", hat(lambda), " to N"))), line = -2, outer = TRUE)
+```
+
+We can see...
 
 ## Question 4 [4 marks]
 
 Compute the maximum likelihood estimate of the mean parameter
-$$\mu(\boldsymbol{\lambda}_*)=E[Y|\boldsymbol{\lambda}_*]=\int_{\mathcal R} y\,f(y|\boldsymbol{\lambda}_*)dy\,.$$
+$$\mu(\boldsymbol{\lambda}_*)=E[Y|\boldsymbol{\lambda}_*]=\int_{\mathbb R} y\,f(y|\boldsymbol{\lambda}_*)dy\,.$$
+
 Also compute an asymptotic 95% confidence interval for $\mu(\boldsymbol{\lambda}_*)$. State clearly any assumptions you have made.
-
-*A5* - changing integral and derivative
-
-We define 
-$$g_1(\boldsymbol{\theta}) = \mu(\boldsymbol{\theta}) = \int_{\mathcal R} y\,f(y|\boldsymbol{\theta})dy$$
-
-etc...
-
-$$g_1(\boldsymbol{\theta}) = \int_{\mathcal R} y\,\exp(\log f(y|\boldsymbol{\theta}))dy$$
-This is helpful since we can use our existing functions to calculate $\log f(y|\boldsymbol{\theta})$ and R's **integrate()** function.
-
-$$\frac{\partial}{\partial\theta_i} g_1(\boldsymbol{\theta}) = \int_{\mathcal R} yf(y|\boldsymbol{\theta})\frac{\partial}{\partial\theta_i}\log f(y|\boldsymbol{\theta})dy\,\quad i =1,2$$
 
 ## Solution to Question 4
 
+(Could add more about assumptions here!)
+
+We define 
+$$g_1(\boldsymbol{\lambda}) = \mu(\boldsymbol{\lambda}) = \int_{\mathbb R} y\,f(y|\boldsymbol{\lambda})dy$$
+
+We can use our existing NLL function to calculate $\log f(y|\boldsymbol{\lambda})$ and then use R's **integrate()** function.
+
+We first check that our density integrates to 1 over $\mathbb R$
+
 ```{r}
-mu_integrand <- function(y, lambda1, lambda2, N) {
-  sapply(y, \(x) x * exp(-nll_fn(theta = reparam(c(lambda1, lambda2)), x, N)))
-}
+integrand <- function(y, lambda1, lambda2, N) sapply(y, \(x) exp(-nll_fn(theta = reparam(c(lambda1, lambda2)), x, N)))
 
-est <- integrate(mu_integrand, lower = -30, upper = 30, lambda1 = atan(best_fit$par[1]), lambda2 = exp(best_fit$par[2]), N = 10000)$value
+integrate(integrand, lower = -Inf, upper = Inf, lambda1 = atan(fit_q2$par[1]), lambda2 = exp(fit_q2$par[2]), N = N_val)$value
+```
 
+Now we notice that
+$$1 = \int_{\mathbb R} f(y|\boldsymbol{\lambda})dy = e^{\lambda_2 \log(\cos \lambda_1)} \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy$$
+
+So,
+$$\tag{1} -\lambda_2 \log(\cos \lambda_1) = \log \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\theta})dy$$
+
+Taking $\frac{\partial}{\partial \lambda_1}$ of the RHS of $(1)$ and using the chain rule we get:
+$$\tag{2} \frac{\partial}{\partial \lambda_1} \log \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy = \frac {\frac{\partial}{\partial \lambda_1} \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy} {\int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy} = \frac {\frac{\partial}{\partial \lambda_1} \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy} {\int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy} = \frac {e^{\lambda_2 \log(\cos \lambda_1)} \frac{\partial}{\partial \lambda_1} \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy} {e^{\lambda_2 \log(\cos \lambda_1)} \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy}$$
+
+The denominator of the fraction on the RHS of $(2)$ is exactly $\int_{\mathbb R} f(y|\boldsymbol{\theta})dy$ and using assumption *A5* from the lecture notes to interchange the derivative and integral we see the numerator is simply:
+$$\int_{\mathbb R} e^{\lambda_2 \log(\cos \lambda_1)}\frac{\partial}{\partial \lambda_1}(e^{\lambda_1 y})\,g(y|\boldsymbol{\theta})dy = \int_{\mathbb R} ye^{\lambda_2 \log(\cos \lambda_1)}e^{\lambda_1 y}g(y|\boldsymbol{\theta})dy = \int_{\mathbb R} y\,f(y|\boldsymbol{\lambda})dy = \mu(\boldsymbol{\lambda})$$
+
+Applying $\frac{\partial}{\partial \lambda_1}$ to the LHS of $(1)$ we finally get that 
+$$\tag{*} \mu(\boldsymbol{\lambda}) = \lambda_2 \tan \lambda_1$$
+
+We evaluate this expression at $\hat\lambda$:
+
+```{r}
+expr_mu <- expression(lambda2 * tan(lambda1))
+
+deriv_pack_mu <- deriv(expr_mu, c("lambda1", "lambda2"), function.arg = c("lambda1", "lambda2"), hessian = T)
+
+res <- deriv_pack_mu(atan(fit_q2$par[1]), exp(fit_q2$par[2]))
+
+est <- as.numeric(res)
+
+est
+```
+
+And check our answer with an integral:
+
+```{r}
+mu_integrand <- function(y, lambda1, lambda2, N) sapply(y, \(x) x * exp(-nll_fn(theta = reparam(c(lambda1, lambda2)), x, N)))
+
+est_int <- integrate(mu_integrand, lower = -100, upper = 100, lambda1 = atan(fit_q2$par[1]), lambda2 = exp(fit_q2$par[2]), N = N_val)$value
+
+est_int
+```
+
+Using results from lectures about confidence intervals and the Delta Method, we compute an asymptotic 95% CI for this estimate:
+
+```{r}
+hess_q4 <- matrix(as.numeric(attr(res, 'hessian')), nrow = 2, ncol = 2)
+
+J <- as.numeric(attr(res, 'gradient'))
+  
+se <- as.numeric(sqrt(t(J) %*% solve(fit_q2$hess) %*% J))
+
+est + c(-1.96, 1.96) * se
+```
+
+We can also use the original expression for $\mu(\boldsymbol\lambda)$, noticing that
+$$\frac{\partial}{\partial\theta_i} g_1(\boldsymbol{\theta}) = \int_{\mathbb R} yf(y|\boldsymbol{\theta})\frac{\partial}{\partial\theta_i}\log f(y|\boldsymbol{\theta})dy\,\quad i =1,2$$
+
+```{r}
 J_integrand <- function(y, lambda1, lambda2, N, comp = 1) {
   theta <- reparam(c(lambda1, lambda2))
   
@@ -229,45 +321,51 @@ J_integrand <- function(y, lambda1, lambda2, N, comp = 1) {
   res[comp, ]
 }
 
-J <- sapply(
-  c(1:2), \(x) integrate(J_integrand, lower = -30, upper = 30, lambda1 = atan(best_fit$par[1]), lambda2 = exp(best_fit$par[2]), N = 10000, comp = x)$value
+# Apply the integration over each 
+J_int <- sapply(
+  c(1:2), \(x) integrate(J_integrand, lower = -30, upper = 30, lambda1 = atan(fit_q2$par[1]), lambda2 = exp(fit_q2$par[2]), N = N_val, comp = x)$value
 )
 
-se <- as.numeric(sqrt(t(J) %*% solve(best_fit$hess) %*% J))
+se_int <- as.numeric(sqrt(t(J_int) %*% solve(fit_q2$hess) %*% J_int))
 
-est + c(-1, 1) * se
+est_int + c(-1.96, 1.96) * se_int
 ```
-
-```{r}  
-xx <- seq(-5,30,length=100)
-yy_dens <- rep(NA,100)
-
-for (i in 1:100){
-  yy_dens[i] <- log_dens(xx[i], lambda1, lambda2, 100)
-}
-
-plot(xx,yy_dens,type="l")
-```
-
-
 
 ## Question 5 [4 marks]
 
 Compute an asymptotic 95% confidence interval for the unknown parameter $\lambda^*_2$ using:
 
-* the asymptotic normal approximation to the distribution $\hat{\lambda}_2$
+- the asymptotic normal approximation to the distribution $\hat{\lambda}_2$
 
-* the asymptotic normal approximation to the distribution $\log( \hat{\lambda}_2)$
-
-
+- the asymptotic normal approximation to the distribution $\log( \hat{\lambda}_2)$
 
 ## Solution to Question 5
 
+First we compute an asymptotic 95% confidence interval using $\hat{\lambda}_2$. By results in lectures (under Assumptions *A1* - *A5*):
+$$\widetilde{\boldsymbol{\mathcal I}(\boldsymbol{\theta}^*)}^{1/2}(\widehat{\boldsymbol{\theta}}_n(\boldsymbol{\mathcal Y})-\boldsymbol{\theta}^*)\stackrel{d}{\to} N(\boldsymbol{0}_{p+m},\boldsymbol{I}_{p+m})$$
+
+Where $\widetilde{\boldsymbol{\mathcal I}(\boldsymbol{\theta}^*)}^{1/2}$ is our estimator to the variance, as defined in lectures.
+
 ```{r}
-# your code here
+asymp_var <- solve(fit_q2$hessian)
+# Take the 2,2 component to get confidence interval for lambda2
+exp(fit_q2$par[2]) + c(-1.96, 1.96) * sqrt(asymp_var[2,2])
 ```
 
+We now compute a confidence interval for $g_1(\boldsymbol\lambda) = \log({\lambda}_2)$ using the Delta Method. From lecture notes, we can estimate the variance by $\boldsymbol{J}_{\boldsymbol{g}}(\widehat{\boldsymbol{\theta}})[\nabla^2_{\! \boldsymbol{\theta}}\phi(\widehat{\boldsymbol{\theta}}|\boldsymbol{y})]^{-1}\boldsymbol{J}^T_{\boldsymbol{g}}(\widehat{\boldsymbol{\theta}})$, where $\boldsymbol{J}_{\boldsymbol{g}}(\widehat{\boldsymbol{\theta}})$ is defined as in the notes.
 
+```{r}
+J <- grad_fn(theta = fit_q2$par, y_sample_q1, N_val)
+# Again, taking 2,2 component to get confidence interval for lambda2
+se <- sqrt(J[2] * asymp_var[2,2] * J[2])
+CI <- fit_q2$par[2] + c(-1.96, 1.96) * se
+```
+
+Then using invariance of the MLE we can get a confidence interval for $\lambda^*_2$:
+
+```{r}
+exp(CI)
+```
 
 ## Question 6 [4 marks]
 
@@ -277,7 +375,7 @@ $$H_0:\,\mu(\boldsymbol{\lambda}_*)=5\qquad \mbox{vs}\qquad H_a:\,\mu(\boldsymbo
 
 using a significance level $\alpha=0.05$.
 
-Separately, also test 
+Separately, also test
 
 $$H_0:\,\lambda^*_2=5\qquad \mbox{vs}\qquad H_a:\,\lambda^*_2\neq 5$$
 
@@ -285,68 +383,333 @@ using a significance level $\alpha=0.05$.
 
 ## Solution to Question 6
 
+Using $(*)$ from Q4, we code expressions for given $H_0: \mu(\boldsymbol{\lambda}_*)=\lambda_1\tan(\lambda_2)=5$, i.e. $\lambda_2=\frac{5}{\tan(\lambda_1)}$.
+
 ```{r}
-# your code here
+# Reparametrisation of lambda = theta as before
+logdens_outside_sum_q6 <- expression(
+  + atan(theta1) * y
+  + (5 / theta1) * log(cos(atan(theta1)))
+  + log(2) * 3
+  + 2 * lgamma(5 / (2 * theta1))
+  - log(pi)
+  - lgamma(5 / theta1)
+)
+
+logdens_inside_sum_q6 <- expression(
+  - log(1 + (y / (5 / theta1 +  2 * j)) ^ 2)
+)
+
+deriv_outside_sum_q6 <- deriv(logdens_outside_sum_q6, c("theta1"), function.arg = c("theta1", "y"))
+deriv_inside_sum_q6 <- deriv(logdens_inside_sum_q6, c("theta1"), function.arg = c("theta1", "y", "j"))
+
+nll_fn_q6_p1 <- function(theta1, y, N = 10000) {
+  inside_sum <- NA
+  
+  for(j in 0:N) {
+    res <- deriv_inside_sum_q6(theta1, y, j)
+    inside_sum[j + 1] <- apply(attr(res,"gradient"),2,sum) 
+  }
+  
+  g_sum <- sum(inside_sum)
+  
+  res <- deriv_outside_sum_q6(theta1 = theta1, y = y)
+  
+  fn <- sum(as.numeric(res)) + g_sum
+  
+  - fn
+}
+
+grad_fn_q6_p1 <- function(theta1, y, N = 10000) {
+  inside_sum <- NA
+  
+  for(j in 0:N) {
+    res <- deriv_inside_sum_q6(theta1 = theta1, y = y, j)
+    inside_sum[j + 1] <- sum(attr(res,"gradient"))
+  }
+  
+  g_sum <- sum(inside_sum, na.rm = T)
+  
+  res <- deriv_outside_sum_q6(theta1 = theta1, y = y)
+  
+  grad <- apply(attr(res,"gradient"), 2, sum) + g_sum
+  
+  - grad
+}
+
+fit_q6_p1 <- NULL
+
+for(i in 1:NROW(L0)) {
+  fit_q6_p1[[i]] <- 
+    optim(
+      par = tan(as.numeric(L0[i, 1])),
+      fn = nll_fn_q6_p1,
+      gr = grad_fn_q6_p1,
+      method = 'BFGS',
+      y = y_sample_q1,
+      N = N_val,
+      hessian = T
+    )
+  
+  if(check_fail(fit_q6_p1[[i]])) {
+    fit_q6_p1[[i]]$value <- NULL
+  }
+}
+
+nll_vals <- lapply(fit_q6_p1, \(x) as.numeric(x$value))
+
+test <- fit_q6_p1[[which.min(nll_vals)]]
+
+glrt <- 2 * (-fit_q2$value + test$value)
+glrt > qchisq(0.95, 1)
 ```
 
+So we reject $H_0$ in this case.
+
+Now, under $H_0:\,\lambda^*_2=5$, we code expressions for the log density and run optim over the starting $\lambda_2$ values from **L0**.
+
+```{r, warning=F}
+# Use same reparametrisation of lambda1 again
+log_dens_q6_p2 <- expression(
+  + atan(theta1) * y 
+  + 5 * log(cos(atan(theta1)))
+  + log(2) * 3
+  + 2 * lgamma(5 / 2)
+  - log(pi)
+  - lgamma(5)
+)
+
+deriv_q6_p2 <- deriv(log_dens_q6_p2, c("theta1"), function.arg = c("theta1", "y"))
+
+nll_fn_q6_p2 <- function(theta1, y, N = 10000) {
+  inside_sum <- NA
+  
+  for(j in 0:N) {
+    inside_sum[j + 1] <- sum(- log(1 + (y / (5 +  2 * j)) ^ 2))
+  }
+  
+  g_sum <- sum(inside_sum)
+  
+  res <- deriv_q6_p2(theta1 = theta1, y = y)
+  
+  fn <- sum(as.numeric(res)) + g_sum
+  
+  - fn
+}
+
+grad_fn_q6_p2 <- function(theta1, y, N = 10000) {
+  res <- deriv_q6_p2(theta1 = theta1, y = y)
+  
+  grad <- apply(attr(res,"gradient"), 2, sum)
+  
+  - grad
+}
+
+fit_q6_p2 <- NULL
+
+for(i in 1:NROW(L0)) {
+  fit_q6_p2[[i]] <- 
+    optim(
+      par = tan(as.numeric(L0[i, 1])),
+      fn = nll_fn_q6_p2,
+      gr = grad_fn_q6_p2,
+      method = 'BFGS',
+      y = y_sample_q1,
+      N = N_val,
+      hessian = T
+    )
+  
+  if(check_fail(fit_q6_p2[[i]])) {
+    fit_q6_p2[[i]]$value <- NULL
+  }
+}
+
+nll_vals <- lapply(fit_q6_p2, \(x) as.numeric(x$value))
+
+fit_q6_p2 <- fit_q6_p2[[which.min(nll_vals)]]
+
+glrt <- 2 * (-fit_q2$value + fit_q6_p2$value)
+glrt > qchisq(0.95, 1)
+```
+
+So we reject $H_0$ in this case.
 
 ## Question 7 [10 marks]
 
-Consider the following  data frame
+Consider the following data frame
 
 ```{r}
 #| code-fold: show
 data_q7 <-read.table("http://people.bath.ac.uk/kai21/ASI/CW_2023/data_q7.txt")
-
 ```
+
 that contains a bivariate sample 
-$$(x_1,y_1),\,(x_2,y_2),\,\ldots,\,(x_n,y_n)$$
-of size $n=300$.
+$$(x_1,y_1),\,(x_2,y_2),\,\ldots,\,(x_n,y_n)$$ of size $n=300$.
 
+Use the parametric family $\mathcal F_1$ defined in Question 1 to find an appropriate model for the unknown conditional distribution of $\mathcal Y$ given $\mathcal X=x$, that is $f_*(y|x)$. The model should be defined by specifying the mean function $\mu(\boldsymbol{\theta}^{(1)},x)$ as follows:
 
-
-
-Use the parametric family $\mathcal F_1$ defined in Question 1 to find an appropriate model for the unknown conditional distribution of $\mathcal Y$ given $\mathcal X=x$, that is $f_*(y|x)$. 
-The model should be defined by  specifying the mean function $\mu(\boldsymbol{\theta}^{(1)},x)$ as follows:
-
-$$
-\mu(\boldsymbol{\theta}^{(1)},x) =g^{-1}(\theta_1+\theta_2\,x +\theta_3\,x^2+\theta_4\,x^3 +\cdots+\theta_{p+1}\,x^p)
-$$
+$$\mu(\boldsymbol{\theta}^{(1)},x) =g^{-1}(\theta_1+\theta_2\,x +\theta_3\,x^2+\theta_4\,x^3 +\cdots+\theta_{p+1}\,x^p)$$
 
 for some choice of link function $g$ and some choice of integer $p\geq 1$.
 
+From a set of candidate models (that is for different choices of $g$ and $p$), choose the model with the smallest AIC (Akaike Information Criterion). Only present the results from the maximum likelihood estimation from the best chosen model and simply comment on the other models considered.
 
-From a set of candidate models (that is for different choices of $g$ and $p$),  choose the model with the smallest AIC (Akaike Information Criterion). Only present the results from the maximum likelihood estimation from the best chosen model and simply comment on the other models considered.
+Now, repeat the same process above to find an appropriate model for the unknown conditional distribution of $\mathcal Y$ given $\mathcal X=x$ but now based on the Gamma parametric family:
 
-Now, repeat the same process  above to find an appropriate model for the unknown conditional distribution of $\mathcal Y$ given $\mathcal X=x$ but now based on the Gamma parametric family:
+$$\mathcal F_{gamma}=\left\{f(y|\lambda_1,\lambda_2)=\frac{\lambda_2^{\lambda_1}}{\Gamma(\lambda_1)}y^{\lambda_1-1}\exp(-\lambda_2\,y)\,:\, \lambda_1>0\,,\lambda_2>0,y>0\right\}$$
 
-$$
-\mathcal F_{gamma}=\left\{f(y|\lambda_1,\lambda_2)=\frac{\lambda_2^{\lambda_1}}{\Gamma(\lambda_1)}y^{\lambda_1-1}\exp(-\lambda_2\,y)\,:\, \lambda_1>0\,,\lambda_2>0,y>0\right\}
-$$
+Finally, find an appropriate model for the unknown conditional distribution of $\mathcal Y$ given $\mathcal X=x$ but now based on the Normal parametric family:
 
-Finally, find an appropriate model for the unknown conditional distribution of $\mathcal Y$ given $\mathcal X=x$
-but now based on the Normal parametric family:
+$$\mathcal F_{normal}=\left\{f(y|\lambda_1,\lambda_2)=\frac{1}{\lambda_2\sqrt{2\pi}}\,\exp\left(-\frac{(y-\lambda_1)^2}{2\lambda_2^2}\right)\,:\, \lambda_1\in {\mathcal R},\,\lambda_2>0,y\in {\mathcal R}\right\}$$
 
-$$
-\mathcal F_{normal}=\left\{f(y|\lambda_1,\lambda_2)=\frac{1}{\lambda_2\sqrt{2\pi}}\,\exp\left(-\frac{(y-\lambda_1)^2}{2\lambda_2^2}\right)\,:\, \lambda_1\in {\mathcal R},\,\lambda_2>0,y\in {\mathcal R}\right\}
-$$
-
-
-For each of the three chosen models, you should plot the data together with the maximum likelihood estimate of the mean function as well as corresponding asymptotic 95\% confidence bands in the range $x\in(-3,3)$. Comment on the differences between the confidence bands and the mean function estimates. You must select the best model out of the three, based on the Akaike  Information Criterion. 
-
+For each of the three chosen models, you should plot the data together with the maximum likelihood estimate of the mean function as well as corresponding asymptotic 95% confidence bands in the range $x\in(-3,3)$. Comment on the differences between the confidence bands and the mean function estimates. You must select the best model out of the three, based on the Akaike Information Criterion.
 
 ## Solution to Question 7
 
+We first plot the data:
+
 ```{r}
-# your code here
+plot(y ~ x, data = data_q7, pch = 20)
 ```
 
 
+We use a reparameterisation $\boldsymbol{\lambda} = \boldsymbol{\theta}$, this time with $\lambda_1 = tan^{-1}(\theta_1)$ and $\lambda_2 = \theta_2$. To see the dependence of both our parameters on $x$, we follow Lab Sheet 6 Q5 and discretise data into 3 bins:
+
+```{r}
+# 3 distinct groups of data
+n_bins <- 3
+
+dat.matrix <- dplyr::mutate(data_q7, x_disc = ggplot2::cut_number(x, n_bins, labels = F))
+
+lambda1_disc <- lambda1_disc_up <- lambda1_disc_low <- rep(NA, n_bins)
+lambda2_disc <- lambda2_disc_up <- lambda2_disc_low <- rep(NA, n_bins)
+
+xx <- rep(NA, n_bins)
+
+for(i in 1:n_bins) {
+  ind <- which(dat.matrix$x_disc == i)
+  samp  <- dat.matrix$y[ind]
+  xx[i] <- median(dat.matrix$x[ind])
+
+  optim <- pick_optim(fn = nll_fn, gr = grad_fn, starting_vals = L0_starting_vals, N = N_val, y = samp)
+
+  std.err <- sqrt(diag(solve(optim$hessian)))
+  lambda <- reverse_reparam(optim$par)
+
+  lambda1_disc[i] <- tan(lambda[1])
+  lambda2_disc[i] <- lambda[2]
+
+  lambda1_disc_up[i] <- tan(lambda[1]) + 1.96 * std.err[1]
+  lambda2_disc_up[i] <- lambda[2] + 1.96 * std.err[2]
+
+  lambda1_disc_low[i] <- tan(lambda[1]) - 1.96 * std.err[1]
+  lambda2_disc_low[i] <- lambda[2] - 1.96 * std.err[2]
+}
+
+par(mfrow = c(1,2))
+
+plot(xx, lambda1_disc, type="l", ylab="lambda1", xlab="x", ylim = c(5, 12))
+lines(xx, lambda1_disc_low, col="blue")
+lines(xx, lambda1_disc_up, col="blue")
+
+plot(xx, lambda2_disc, type="l", ylab="lambda2", xlab="x", ylim = c(1.8, 2.5))
+lines(xx, lambda2_disc_low, col="blue")
+lines(xx, lambda2_disc_up, col="blue")
+```
+
+We see that both plots indicate a quadratic relationship...
+
+```{r}
+library(rlang)
+
+n_starts <- 100
+q7_starting_vals <- matrix(NA, nrow = n_starts, ncol = 6)
+
+for(i in 1:n_starts) {
+  q7_starting_vals[i, ] <- c(
+    rnorm(1),
+    rnorm(1),
+    runif(1, 0, 20),
+    rnorm(1),
+    rnorm(1),
+    runif(1, 0, 20)
+  )
+}
+
+f_theta1_expr <- rlang::expr(a + b * x + c * x ^ 2)
+
+f_theta2_expr <- rlang::expr(d + e * x + f * x ^ 2)
+
+f_log_dens_inside_sum_q7 <- rlang::expr(
+  - log(1 + (y / (!!f_theta2_expr +  2 * j)) ^ 2)
+)
+
+f_log_dens_outside_sum_q7 <- rlang::expr(
+  + atan(!!f_theta1_expr) * y 
+  + !!f_theta2_expr * log(cos(atan(!!f_theta1_expr)))
+  + log(2) * (!!f_theta2_expr - 2)
+  + 2 * lgamma(!!f_theta2_expr / 2)
+  - log(pi)
+  - lgamma(!!f_theta2_expr)
+)
+
+f_deriv_inside_sum_q7 <- deriv(expr = f_log_dens_inside_sum_q7, c("a", "b", "c", "d", "e", "f"), function.arg = c("a", "b", "c", "d", "e", "f", "y", "x", "j"))
+f_deriv_outside_sum_q7 <- deriv(expr = f_log_dens_outside_sum_q7, c("a", "b", "c", "d", "e", "f"), function.arg = c("a", "b", "c", "d", "e", "f", "y", "x"))
+
+f_nll_fn_q7 <- function(theta, y, x, N = 10000) {
+  a <- theta[1]
+  b <- theta[2]
+  c <- theta[3]
+  d <- theta[4]
+  e <- theta[5]
+  f <- theta[6]
+  
+  inside_sum <- NA
+  
+  for(j in 0:N) {
+    res <- f_deriv_inside_sum_q7(a = a, b = b, c = c, d = d, e = e, f = f, y = y, x = x, j = j)
+    inside_sum[j + 1] <- sum(as.numeric(res))
+  }
+  
+  g_sum <- sum(inside_sum)
+  
+  res <- f_deriv_outside_sum_q7(a = a, b = b, c = c, d = d, e = e, f = f, y = y, x = x)
+  
+  fn <- sum(as.numeric(res)) + g_sum
+  
+  - fn
+}
+
+f_grad_fn_q7 <- function(theta, y, x, N = 10000) {
+  a <- theta[1]
+  b <- theta[2]
+  c <- theta[3]
+  d <- theta[4]
+  e <- theta[5]
+  f <- theta[6]
+  
+  inside_sum <- NA
+  
+  for(j in 0:N) {
+    res <- f_deriv_inside_sum_q7(a = a, b = b, c = c, d = d, e = e, f = f, y = y, x = x, j = j)
+    inside_sum[j + 1] <- sum(attr(res,"gradient"))
+  }
+  
+  g_sum <- sum(inside_sum, na.rm = T)
+  
+  res <- f_deriv_outside_sum_q7(a = a, b = b, c = c, d = d, e = e, f = f, y = y, x = x)
+  
+  grad <- apply(attr(res,"gradient"), 2, sum) + g_sum
+  
+  - grad
+}
+
+pick_optim(fn = f_nll_fn_q7, gr = f_grad_fn_q7, starting_vals = q7_starting_vals, y = data_q7$y, x = data_q7$x, N = 1000)
+```
+
 ## Question 8 [4 marks]
 
-Use the data in Question 7  to compute 95\% confidence intervals for the least worse value of the mean function  at each $x$, that is $\mu(\boldsymbol{\theta}^{(1)}_\dagger,x)$
-for each of the three parametric families: $\mathcal F_1$, the Gamma and the Normal. Plot the computed confidence bands in the range $x\in(-3,3)$ for each parametric family and comment on the differences obtained.
-
+Use the data in Question 7 to compute 95% confidence intervals for the least worse value of the mean function at each $x$, that is $\mu(\boldsymbol{\theta}^{(1)}_\dagger,x)$ for each of the three parametric families: $\mathcal F_1$, the Gamma and the Normal. Plot the computed confidence bands in the range $x\in(-3,3)$ for each parametric family and comment on the differences obtained.
 
 ## Solution to Question 8
 
