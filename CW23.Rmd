@@ -1,6 +1,6 @@
 ---
 title: "MA40198 Coursework 2023"
-author: "Your names here"
+author: "Sarah Larkin and Louis Bennett"
 output: html_document
 editor_options: 
   markdown: 
@@ -8,23 +8,24 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+# suppress warnings
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, error = FALSE, message = FALSE, fig.align = 'center', eval = TRUE)
 ```
 
 ## Question 1 [4 marks]
 
 Consider the following observed sample:
 
-```{r}
+```{r, cache=TRUE}
 #| code-fold: show
-y_sample_q1 <- scan("http://people.bath.ac.uk/kai21/ASI/CW_2023/y_sample_q1.txt")
+y_sample_q1 <- scan("https://people.bath.ac.uk/kai21/ASI/CW_2023/y_sample_q1.txt")
 ```
 
 Plot 40 contours of the negative loglikelihood function of the parameter $\boldsymbol{\lambda}$ over the region defined by $-\pi/2<\lambda_1<\pi/2$ and $0<\lambda_2<50$. The contours should be sufficiently smooth and cover the entire region. You should indicate a smaller region delimited by a contour that contains the global minimum.
 
 ## Solution to Question 1
 
-We use a reparameterisation $\boldsymbol{\lambda} = \boldsymbol{\theta}$, where $\lambda_1 = tan^{-1}(\theta_1)$ and $\lambda_2 = e^{\theta_2}$.
+We use a reparameterisation $\boldsymbol{\lambda} = (\lambda_1,\lambda_2)^T = (tan^{-1}(\theta_1),e^{\theta_2})^T$.
 
 ```{r}
 log_dens_inside_sum <- expression(
@@ -78,10 +79,10 @@ grad_fn <- function(theta, y, N = 10000) {
 }
 ```
 
-We plot the contour of the NLL here:
+We plot the contour of the negative log likelihood, $\phi(\boldsymbol{\lambda}|y)$ here:
 
-```{r, warning=FALSE}
-N_val <- 1000
+```{r, fig.height=6, fig.align='center', cache=TRUE, eval=TRUE}
+N_val <- 10000
 
 lambda1 <- seq(-pi / 2, pi / 2, length = 102)[-c(1, 102)]
 lambda2 <- seq(0, 50, length = 102)[-c(1, 102)]
@@ -105,9 +106,10 @@ contour(
   y = lambda2,
   z = M,
   levels = levs,
+  drawlabels = F,
   xlab = expression(lambda[1]),
   ylab = expression(lambda[2]),
-  main = expression(paste("Contours of ", phi, "(", lambda, "|y)"))
+  main = expression(bold("Contours of \u03D5(\u03BB|y)"))
 )
 ```
 
@@ -117,17 +119,15 @@ Find the maximum likelihood estimate $\widehat{\lambda}=(\hat{\lambda}_1,\hat{\l
 
 ```{r}
 #| code-fold: show
-L0 <- read.table("http://people.bath.ac.uk/kai21/ASI/CW_2023/starting_vals_q2.txt")
+L0 <- read.table("https://people.bath.ac.uk/kai21/ASI/CW_2023/starting_vals_q2.txt")
 ```
 
 ## Solution to Question 2
 
-We run optim over each starting value in the dataframe and pick the MLE, $\widehat{\lambda}$ with the lowest value of $\phi(\widehat{\lambda})$.
+We run optim over each starting value in the dataframe and pick the MLE, $\boldsymbol{\widehat{\lambda}}$, with the lowest value of $\phi(\boldsymbol{\widehat{\lambda}})$.
 
 ```{r}
-reparam <- function(lambda) {
-  c(tan(lambda[1]), log(lambda[2]))
-}
+reparam <- function(lambda) c(tan(lambda[1]), log(lambda[2]))
 
 check_fail <- function(fit) {
   no_convergence <- fit$convergence > 0
@@ -154,19 +154,20 @@ check_fail <- function(fit) {
 
 pick_optim <- function(fn = nll_fn, gr = grad_fn, starting_vals, ...) {
   fit <- NULL
-
+  
   for(i in 1:NROW(starting_vals)) {
-    fit[[i]] <- 
-      optim(
-        # par = reparam(as.numeric(L0[i, ])),
+    fit[[i]] <- tryCatch(
+      expr = optim(
         par = starting_vals[i, ],
         fn = fn,
         gr = gr,
         method = 'BFGS',
         ...,
         hessian = T
-      )
-    
+      ),
+      error = function(e) list(value = NULL, hessian = diag(length(starting_vals[i, ])), convergence = 0)
+    )
+      
     if(check_fail(fit[[i]])) {
       fit[[i]]$value <- NULL
     }
@@ -174,20 +175,30 @@ pick_optim <- function(fn = nll_fn, gr = grad_fn, starting_vals, ...) {
   
   nll_vals <- lapply(fit, \(x) as.numeric(x$value))
   
+  # pick optimisation that minimises phi
   fit[[which.min(nll_vals)]]
 }
 
 L0_starting_vals <- matrix(NA, nrow = NROW(L0), ncol = 2)
 
+# reparametrise starting values
 for(i in 1:NROW(L0)) {
   L0_starting_vals[i, ] <- reparam(as.numeric(L0[i, ]))
 }
 
-# change this to 10000 for full run
-fit_q2 <- pick_optim(fn = nll_fn, gr = grad_fn, starting_vals = L0_starting_vals, N = N_val, y = y_sample_q1)
+fit_q2 <- pick_optim(starting_vals = L0_starting_vals, N = N_val, y = y_sample_q1)
 
 fit_q2
 ```
+
+We undo the reparameterisation to calculate $\boldsymbol{\widehat\lambda}$:
+
+```{r}
+reverse_reparam <- function(theta) c(atan(theta[1]), exp(theta[2]))
+
+reverse_reparam(fit_q2$par)
+```
+
 
 ## Question 3 [4 marks]
 
@@ -195,22 +206,32 @@ Check the sensitivity of the MLE to the choice of $N$ by plotting (separately) t
 
 ## Solution to Question 3
 
-```{r}
-reverse_reparam <- function(theta) {
-  c(atan(theta[1]), exp(theta[2]))
-}
+```{r, cache=TRUE}
+N_vals <- 10 ^ seq(1, 6)
 
-N_vals <- 10 ^ seq(1, 3)
+# Apply over the N values
+fit_q3 <- lapply(
+  N_vals,
+  \(x) {
+    optim(
+      par = fit_q2$par,
+      fn = nll_fn,
+      gr = grad_fn,
+      method = 'BFGS',
+      N = x,
+      y = y_sample_q1
+    )$par
+  }
+)
 
-fit_q3 <- lapply(N_vals, \(x) reverse_reparam(pick_optim(fn = nll_fn, gr = grad_fn, starting_vals = L0_starting_vals, N = x, y = y_sample_q1)$par))
-
-lambda1_vals <- sapply(fit_q3, \(x) x[1])
-lambda2_vals <- sapply(fit_q3, \(x) x[2])
+# undo reparam
+lambda1_vals <- sapply(fit_q3, \(x) reverse_reparam(x)[1])
+lambda2_vals <- sapply(fit_q3, \(x) reverse_reparam(x)[2])
 ```
 
 We now plot the data:
 
-```{r}
+```{r, fig.width=8}
 par(mfrow = c(1, 2))
 
 plot(
@@ -226,13 +247,13 @@ plot(
   y = lambda2_vals,
   type = 'l',
   xlab = "log(N)",
-  ylab = expression(lambda[1])
+  ylab = expression(lambda[2])
 )
 
-title(expression(bold(paste("Sensitivity of ", hat(lambda), " to N"))), line = -2, outer = TRUE)
+title(expression(bold(paste("Sensitivity of ", hat("\u03BB"), " to N"))), line = -2, outer = TRUE)
 ```
 
-We can see...
+We can see that $\boldsymbol{\hat\lambda}$ is very sensitive to $N$ at smaller values (up to the power of 3) but then becomes fairly consistent as $N$ grows larger.
 
 ## Question 4 [4 marks]
 
@@ -243,44 +264,42 @@ Also compute an asymptotic 95% confidence interval for $\mu(\boldsymbol{\lambda}
 
 ## Solution to Question 4
 
-(Could add more about assumptions here!)
-
 We define 
 $$g_1(\boldsymbol{\lambda}) = \mu(\boldsymbol{\lambda}) = \int_{\mathbb R} y\,f(y|\boldsymbol{\lambda})dy$$
 
 We can use our existing NLL function to calculate $\log f(y|\boldsymbol{\lambda})$ and then use R's **integrate()** function.
 
-We first check that our density integrates to 1 over $\mathbb R$
+We first check that our density integrates to 1 over $\mathbb R$.
 
 ```{r}
 integrand <- function(y, lambda1, lambda2, N) sapply(y, \(x) exp(-nll_fn(theta = reparam(c(lambda1, lambda2)), x, N)))
 
-integrate(integrand, lower = -Inf, upper = Inf, lambda1 = atan(fit_q2$par[1]), lambda2 = exp(fit_q2$par[2]), N = N_val)$value
+integrate(integrand, lower = -Inf, upper = Inf, lambda1 = atan(fit_q2$par[1]), lambda2 = exp(fit_q2$par[2]), N = N_val)
 ```
 
 Now we notice that
 $$1 = \int_{\mathbb R} f(y|\boldsymbol{\lambda})dy = e^{\lambda_2 \log(\cos \lambda_1)} \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy$$
 
 So,
-$$\tag{1} -\lambda_2 \log(\cos \lambda_1) = \log \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\theta})dy$$
+$$\tag{1} -\lambda_2 \log(\cos \lambda_1) = \log \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy$$
 
 Taking $\frac{\partial}{\partial \lambda_1}$ of the RHS of $(1)$ and using the chain rule we get:
 $$\tag{2} \frac{\partial}{\partial \lambda_1} \log \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy = \frac {\frac{\partial}{\partial \lambda_1} \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy} {\int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy} = \frac {\frac{\partial}{\partial \lambda_1} \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy} {\int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy} = \frac {e^{\lambda_2 \log(\cos \lambda_1)} \frac{\partial}{\partial \lambda_1} \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy} {e^{\lambda_2 \log(\cos \lambda_1)} \int_{\mathbb R} e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy}$$
 
 The denominator of the fraction on the RHS of $(2)$ is exactly $\int_{\mathbb R} f(y|\boldsymbol{\theta})dy$ and using assumption *A5* from the lecture notes to interchange the derivative and integral we see the numerator is simply:
-$$\int_{\mathbb R} e^{\lambda_2 \log(\cos \lambda_1)}\frac{\partial}{\partial \lambda_1}(e^{\lambda_1 y})\,g(y|\boldsymbol{\theta})dy = \int_{\mathbb R} ye^{\lambda_2 \log(\cos \lambda_1)}e^{\lambda_1 y}g(y|\boldsymbol{\theta})dy = \int_{\mathbb R} y\,f(y|\boldsymbol{\lambda})dy = \mu(\boldsymbol{\lambda})$$
+$$\int_{\mathbb R} e^{\lambda_2 \log(\cos \lambda_1)}\frac{\partial}{\partial \lambda_1}(e^{\lambda_1 y})\,g(y|\boldsymbol{\lambda})dy = \int_{\mathbb R} ye^{\lambda_2 \log(\cos \lambda_1)}e^{\lambda_1 y}g(y|\boldsymbol{\lambda})dy = \int_{\mathbb R} y\,f(y|\boldsymbol{\lambda})dy = \mu(\boldsymbol{\lambda})$$
 
 Applying $\frac{\partial}{\partial \lambda_1}$ to the LHS of $(1)$ we finally get that 
-$$\tag{*} \mu(\boldsymbol{\lambda}) = \lambda_2 \tan \lambda_1$$
+$$\tag{*} \mu(\boldsymbol{\lambda}) = \lambda_2 \tan \lambda_1 = e^{\theta_2} \theta_1$$
 
-We evaluate this expression at $\hat\lambda$:
+We evaluate this expression at $\hat\theta$:
 
 ```{r}
-expr_mu <- expression(lambda2 * tan(lambda1))
+expr_mu <- expression(exp(theta2) * theta1)
 
-deriv_pack_mu <- deriv(expr_mu, c("lambda1", "lambda2"), function.arg = c("lambda1", "lambda2"), hessian = T)
+deriv_pack_mu <- deriv(expr_mu, c("theta1", "theta2"), function.arg = c("theta1", "theta2"), hessian = T)
 
-res <- deriv_pack_mu(atan(fit_q2$par[1]), exp(fit_q2$par[2]))
+res <- deriv_pack_mu(fit_q2$par[1], fit_q2$par[2])
 
 est <- as.numeric(res)
 
@@ -297,6 +316,8 @@ est_int <- integrate(mu_integrand, lower = -100, upper = 100, lambda1 = atan(fit
 est_int
 ```
 
+These results are likely slightly different due to us using `r N_val` as an approximation to an infinite sum.
+
 Using results from lectures about confidence intervals and the Delta Method, we compute an asymptotic 95% CI for this estimate:
 
 ```{r}
@@ -310,7 +331,7 @@ est + c(-1.96, 1.96) * se
 ```
 
 We can also use the original expression for $\mu(\boldsymbol\lambda)$, noticing that
-$$\frac{\partial}{\partial\theta_i} g_1(\boldsymbol{\theta}) = \int_{\mathbb R} yf(y|\boldsymbol{\theta})\frac{\partial}{\partial\theta_i}\log f(y|\boldsymbol{\theta})dy\,\quad i =1,2$$
+$$\frac{\partial}{\partial\lambda_i} g_1(\boldsymbol{\lambda}) = \int_{\mathbb R} yf(y|\boldsymbol{\lambda})\frac{\partial}{\partial\lambda_i}\log f(y|\boldsymbol{\lambda})dy\,\quad i =1,2$$
 
 ```{r}
 J_integrand <- function(y, lambda1, lambda2, N, comp = 1) {
@@ -321,7 +342,7 @@ J_integrand <- function(y, lambda1, lambda2, N, comp = 1) {
   res[comp, ]
 }
 
-# Apply the integration over each 
+# Apply the integration from -30 to 30 as this covers majority of distribution
 J_int <- sapply(
   c(1:2), \(x) integrate(J_integrand, lower = -30, upper = 30, lambda1 = atan(fit_q2$par[1]), lambda2 = exp(fit_q2$par[2]), N = N_val, comp = x)$value
 )
@@ -352,12 +373,12 @@ asymp_var <- solve(fit_q2$hessian)
 exp(fit_q2$par[2]) + c(-1.96, 1.96) * sqrt(asymp_var[2,2])
 ```
 
-We now compute a confidence interval for $g_1(\boldsymbol\lambda) = \log({\lambda}_2)$ using the Delta Method. From lecture notes, we can estimate the variance by $\boldsymbol{J}_{\boldsymbol{g}}(\widehat{\boldsymbol{\theta}})[\nabla^2_{\! \boldsymbol{\theta}}\phi(\widehat{\boldsymbol{\theta}}|\boldsymbol{y})]^{-1}\boldsymbol{J}^T_{\boldsymbol{g}}(\widehat{\boldsymbol{\theta}})$, where $\boldsymbol{J}_{\boldsymbol{g}}(\widehat{\boldsymbol{\theta}})$ is defined as in the notes.
+We now compute a confidence interval for $g_1(\boldsymbol\lambda) = \log({\lambda}_2) = \theta_2$ using the Delta Method. From lecture notes, we can estimate the variance by $\boldsymbol{J}_{\boldsymbol{g}}(\widehat{\boldsymbol{\theta}})[\nabla^2_{\! \boldsymbol{\theta}}\phi(\widehat{\boldsymbol{\theta}}|\boldsymbol{y})]^{-1}\boldsymbol{J}^T_{\boldsymbol{g}}(\widehat{\boldsymbol{\theta}})$, where $\boldsymbol{J}_{\boldsymbol{g}}(\widehat{\boldsymbol{\theta}})$ is defined as in the notes.
 
 ```{r}
-J <- grad_fn(theta = fit_q2$par, y_sample_q1, N_val)
+J_g <- grad_fn(theta = fit_q2$par, y_sample_q1, N_val)
 # Again, taking 2,2 component to get confidence interval for lambda2
-se <- sqrt(J[2] * asymp_var[2,2] * J[2])
+se <- sqrt(J_g[2] * asymp_var[2,2] * J_g[2])
 CI <- fit_q2$par[2] + c(-1.96, 1.96) * se
 ```
 
@@ -383,39 +404,37 @@ using a significance level $\alpha=0.05$.
 
 ## Solution to Question 6
 
-Using $(*)$ from Q4, we code expressions for given $H_0: \mu(\boldsymbol{\lambda}_*)=\lambda_1\tan(\lambda_2)=5$, i.e. $\lambda_2=\frac{5}{\tan(\lambda_1)}$.
+Using $(*)$ from Q4, we code expressions for given $H_0: \mu(\boldsymbol{\lambda}_*)=\lambda_2\tan(\lambda_1)=5$, i.e. $\theta_1=tan(\lambda_1)=\frac{5}{\lambda_2}=\frac{5}{e^{\theta_2}}$.
 
 ```{r}
-# Reparametrisation of lambda = theta as before
-logdens_outside_sum_q6 <- expression(
-  + atan(theta1) * y
-  + (5 / theta1) * log(cos(atan(theta1)))
-  + log(2) * 3
-  + 2 * lgamma(5 / (2 * theta1))
+# Reparametrisation of lambda1 = atan(theta) as before
+log_dens_inside_sum_q6 <- expression(
+  - log(1 + (y/((5/theta1)+2*j))^2)
+)
+
+log_dens_outside_sum_q6 <- expression(
+  + atan(theta1)*y
+  + (5/theta1)*log(cos(atan(theta1)))
+  + ((5/theta1)-2)*log(2)
+  + 2*lgamma(0.5 * (5/theta1))
   - log(pi)
-  - lgamma(5 / theta1)
+  - lgamma(5/theta1)
 )
 
-logdens_inside_sum_q6 <- expression(
-  - log(1 + (y / (5 / theta1 +  2 * j)) ^ 2)
-)
-
-deriv_outside_sum_q6 <- deriv(logdens_outside_sum_q6, c("theta1"), function.arg = c("theta1", "y"))
-deriv_inside_sum_q6 <- deriv(logdens_inside_sum_q6, c("theta1"), function.arg = c("theta1", "y", "j"))
+deriv_outside_sum_q6 <- deriv(log_dens_outside_sum_q6, c("theta1"), function.arg = c("theta1", "y"))
+deriv_inside_sum_q6 <- deriv(log_dens_inside_sum_q6, c("theta1"), function.arg = c("theta1", "y", "j"))
 
 nll_fn_q6_p1 <- function(theta1, y, N = 10000) {
   inside_sum <- NA
   
-  for(j in 0:N) {
+  for (j in 0:N) {
     res <- deriv_inside_sum_q6(theta1, y, j)
-    inside_sum[j + 1] <- apply(attr(res,"gradient"),2,sum) 
+    inside_sum[j+1] <- sum(as.numeric(res))
   }
   
-  g_sum <- sum(inside_sum)
+  res <- deriv_outside_sum_q6(theta1, y)
   
-  res <- deriv_outside_sum_q6(theta1 = theta1, y = y)
-  
-  fn <- sum(as.numeric(res)) + g_sum
+  fn <- sum(as.numeric(res)) + sum(inside_sum)
   
   - fn
 }
@@ -423,48 +442,26 @@ nll_fn_q6_p1 <- function(theta1, y, N = 10000) {
 grad_fn_q6_p1 <- function(theta1, y, N = 10000) {
   inside_sum <- NA
   
-  for(j in 0:N) {
-    res <- deriv_inside_sum_q6(theta1 = theta1, y = y, j)
-    inside_sum[j + 1] <- sum(attr(res,"gradient"))
+  for (j in 0:N) {
+    res2 <- deriv_inside_sum_q6(theta1, y, j)
+    inside_sum[j + 1] <- apply(attr(res2,"gradient"), 2, sum)  
   }
   
-  g_sum <- sum(inside_sum, na.rm = T)
+  res <- deriv_outside_sum_q6(theta1, y)
   
-  res <- deriv_outside_sum_q6(theta1 = theta1, y = y)
-  
-  grad <- apply(attr(res,"gradient"), 2, sum) + g_sum
+  grad <- apply(attr(res,"gradient"), 2, sum) + sum(inside_sum)  
   
   - grad
 }
 
-fit_q6_p1 <- NULL
+fit_q6_p1 <- pick_optim(fn = nll_fn_q6_p1, gr = grad_fn_q6_p1, starting_vals = matrix(tan(L0$lambda1)), N = N_val, y = y_sample_q1)
 
-for(i in 1:NROW(L0)) {
-  fit_q6_p1[[i]] <- 
-    optim(
-      par = tan(as.numeric(L0[i, 1])),
-      fn = nll_fn_q6_p1,
-      gr = grad_fn_q6_p1,
-      method = 'BFGS',
-      y = y_sample_q1,
-      N = N_val,
-      hessian = T
-    )
-  
-  if(check_fail(fit_q6_p1[[i]])) {
-    fit_q6_p1[[i]]$value <- NULL
-  }
-}
-
-nll_vals <- lapply(fit_q6_p1, \(x) as.numeric(x$value))
-
-test <- fit_q6_p1[[which.min(nll_vals)]]
-
-glrt <- 2 * (-fit_q2$value + test$value)
+# test statistic from lectures
+glrt <- 2 * (-fit_q2$value + fit_q6_p1$value)
 glrt > qchisq(0.95, 1)
 ```
 
-So we reject $H_0$ in this case.
+So we reject $H_0$ in this case, since our test statistic `r round(glrt, digits = 1)` is higher than the 95% quantile of the corresponding distribution ($\chi^2_{1,0.95}$).
 
 Now, under $H_0:\,\lambda^*_2=5$, we code expressions for the log density and run optim over the starting $\lambda_2$ values from **L0**.
 
@@ -485,6 +482,7 @@ nll_fn_q6_p2 <- function(theta1, y, N = 10000) {
   inside_sum <- NA
   
   for(j in 0:N) {
+    # can compute this directly
     inside_sum[j + 1] <- sum(- log(1 + (y / (5 +  2 * j)) ^ 2))
   }
   
@@ -497,6 +495,7 @@ nll_fn_q6_p2 <- function(theta1, y, N = 10000) {
   - fn
 }
 
+# notice that the product is not here since this is constant and hence differentiates to 0
 grad_fn_q6_p2 <- function(theta1, y, N = 10000) {
   res <- deriv_q6_p2(theta1 = theta1, y = y)
   
@@ -505,40 +504,19 @@ grad_fn_q6_p2 <- function(theta1, y, N = 10000) {
   - grad
 }
 
-fit_q6_p2 <- NULL
-
-for(i in 1:NROW(L0)) {
-  fit_q6_p2[[i]] <- 
-    optim(
-      par = tan(as.numeric(L0[i, 1])),
-      fn = nll_fn_q6_p2,
-      gr = grad_fn_q6_p2,
-      method = 'BFGS',
-      y = y_sample_q1,
-      N = N_val,
-      hessian = T
-    )
-  
-  if(check_fail(fit_q6_p2[[i]])) {
-    fit_q6_p2[[i]]$value <- NULL
-  }
-}
-
-nll_vals <- lapply(fit_q6_p2, \(x) as.numeric(x$value))
-
-fit_q6_p2 <- fit_q6_p2[[which.min(nll_vals)]]
+fit_q6_p2 <- pick_optim(fn = nll_fn_q6_p2, gr = grad_fn_q6_p2, starting_vals = matrix(tan(L0$lambda1)), N = N_val, y = y_sample_q1)
 
 glrt <- 2 * (-fit_q2$value + fit_q6_p2$value)
 glrt > qchisq(0.95, 1)
 ```
 
-So we reject $H_0$ in this case.
+So we reject $H_0$ in this case, again since our test statistic `r round(glrt, digits = 1)` is higher than $\chi^2_{1,0.95}$.
 
 ## Question 7 [10 marks]
 
 Consider the following data frame
 
-```{r}
+```{r, cache=TRUE}
 #| code-fold: show
 data_q7 <-read.table("http://people.bath.ac.uk/kai21/ASI/CW_2023/data_q7.txt")
 ```
@@ -559,7 +537,6 @@ Now, repeat the same process above to find an appropriate model for the unknown 
 $$\mathcal F_{gamma}=\left\{f(y|\lambda_1,\lambda_2)=\frac{\lambda_2^{\lambda_1}}{\Gamma(\lambda_1)}y^{\lambda_1-1}\exp(-\lambda_2\,y)\,:\, \lambda_1>0\,,\lambda_2>0,y>0\right\}$$
 
 Finally, find an appropriate model for the unknown conditional distribution of $\mathcal Y$ given $\mathcal X=x$ but now based on the Normal parametric family:
-
 $$\mathcal F_{normal}=\left\{f(y|\lambda_1,\lambda_2)=\frac{1}{\lambda_2\sqrt{2\pi}}\,\exp\left(-\frac{(y-\lambda_1)^2}{2\lambda_2^2}\right)\,:\, \lambda_1\in {\mathcal R},\,\lambda_2>0,y\in {\mathcal R}\right\}$$
 
 For each of the three chosen models, you should plot the data together with the maximum likelihood estimate of the mean function as well as corresponding asymptotic 95% confidence bands in the range $x\in(-3,3)$. Comment on the differences between the confidence bands and the mean function estimates. You must select the best model out of the three, based on the Akaike Information Criterion.
@@ -569,142 +546,427 @@ For each of the three chosen models, you should plot the data together with the 
 We first plot the data:
 
 ```{r}
+par(mfrow = c(1,1))
+
 plot(y ~ x, data = data_q7, pch = 20)
 ```
 
+Noticing the data is in 3 distinct groups of x values, it is likely that the maximum value p can take is 2 since any higher would indicate a cubic fit which isn't possible through the 3 points.
 
-We use a reparameterisation $\boldsymbol{\lambda} = \boldsymbol{\theta}$, this time with $\lambda_1 = tan^{-1}(\theta_1)$ and $\lambda_2 = \theta_2$. To see the dependence of both our parameters on $x$, we follow Lab Sheet 6 Q5 and discretise data into 3 bins:
+For $\mathcal F_{gamma}$, notice that
+$$f(y|\lambda_1,\lambda_2)=\exp(-\lambda_2y+\lambda_1\log\lambda_2+\log\Gamma(\lambda_1)+\lambda_1\log y)=\exp(\frac{\frac{\lambda_2}{\lambda_1}y-\log\lambda_2}{-\lambda_1^{-1}}+\log\Gamma(\lambda_1)+\lambda_1\log y)$$
+And so we can reparametrise $\mu=\frac{\lambda_2}{\lambda_1}$, $\phi=\frac{1}{\lambda_1}$ to get the following:
+$$\exp(\frac{\mu y-\log\mu}{-\phi}+\frac{\log\phi}{\phi}+(\phi^{-1}-1)\log{y}-\log\Gamma\phi^{-1})$$
 
-```{r}
-# 3 distinct groups of data
-n_bins <- 3
-
-dat.matrix <- dplyr::mutate(data_q7, x_disc = ggplot2::cut_number(x, n_bins, labels = F))
-
-lambda1_disc <- lambda1_disc_up <- lambda1_disc_low <- rep(NA, n_bins)
-lambda2_disc <- lambda2_disc_up <- lambda2_disc_low <- rep(NA, n_bins)
-
-xx <- rep(NA, n_bins)
-
-for(i in 1:n_bins) {
-  ind <- which(dat.matrix$x_disc == i)
-  samp  <- dat.matrix$y[ind]
-  xx[i] <- median(dat.matrix$x[ind])
-
-  optim <- pick_optim(fn = nll_fn, gr = grad_fn, starting_vals = L0_starting_vals, N = N_val, y = samp)
-
-  std.err <- sqrt(diag(solve(optim$hessian)))
-  lambda <- reverse_reparam(optim$par)
-
-  lambda1_disc[i] <- tan(lambda[1])
-  lambda2_disc[i] <- lambda[2]
-
-  lambda1_disc_up[i] <- tan(lambda[1]) + 1.96 * std.err[1]
-  lambda2_disc_up[i] <- lambda[2] + 1.96 * std.err[2]
-
-  lambda1_disc_low[i] <- tan(lambda[1]) - 1.96 * std.err[1]
-  lambda2_disc_low[i] <- lambda[2] - 1.96 * std.err[2]
-}
-
-par(mfrow = c(1,2))
-
-plot(xx, lambda1_disc, type="l", ylab="lambda1", xlab="x", ylim = c(5, 12))
-lines(xx, lambda1_disc_low, col="blue")
-lines(xx, lambda1_disc_up, col="blue")
-
-plot(xx, lambda2_disc, type="l", ylab="lambda2", xlab="x", ylim = c(1.8, 2.5))
-lines(xx, lambda2_disc_low, col="blue")
-lines(xx, lambda2_disc_up, col="blue")
-```
-
-We see that both plots indicate a quadratic relationship...
+And in fact, we know that $\mathbb E[Y] = \frac{1}{\mu}$ by the properties of the Gamma distribution.
 
 ```{r}
 library(rlang)
+```
 
-n_starts <- 100
-q7_starting_vals <- matrix(NA, nrow = n_starts, ncol = 6)
+```{r, fig.height = 8}
+fit_gamma_model <- function(p = 2, link = 'inverse', y = data_q7$y, x = data_q7$x, n_starts = 100) {
+  mu_expr <- expr(a)
+  
+  if(p > 0) {
+    for(i in 1:p) mu_expr <- expr(!!mu_expr + !!sym(letters[i + 1]) * x ^ !!as.numeric(i))
+  }
+  
+  if(link == "identity") {
+    mu_expr <- mu_expr
+  } else if(link == "log") {
+    mu_expr <- expr(exp(!!mu_expr))
+  } else if(link == "inverse") {
+    mu_expr <- expr(1/(!!mu_expr))
+  } else if(link == "sin") {
+    mu_expr <- expr(asin(!!mu_expr))
+  } else {
+    stop("Try a different link function")
+  }
+  
+  # theta1 = exp(phi)
+  log_dens_gamma_expr <- expr(
+    - (y * !!mu_expr) / exp(theta1)
+    + log(!!mu_expr) / exp(theta1)
+    + theta1 / exp(theta1)
+    - (1 - 1 / exp(theta1)) * log(y)
+    - lgamma(1 / exp(theta1))
+  )
+  
+  if(p == 2) {
+    gamma_deriv <- deriv(log_dens_gamma_expr, c("a", "b", "c", "theta1"), function.arg = c("a", "b", "c", "theta1", "y", "x"))
+  } else if(p == 1) {
+    gamma_deriv <- deriv(log_dens_gamma_expr, c("a", "b", "theta1"), function.arg = c("a", "b", "theta1", "y", "x"))
+  } else {
+    gamma_deriv <- deriv(log_dens_gamma_expr, c("a", "theta1"), function.arg = c("a", "theta1", "y", "x"))
+  }
+  
+  eval_deriv <- function(theta, y, x) {
+    if(length(theta) == 4) {
+      res <- gamma_deriv(
+        a = theta[1], 
+        b = theta[2], 
+        c = theta[3], 
+        theta1 = theta[4], 
+        y = y,
+        x = x
+      )
+    } else if(length(theta) == 3) {
+      res <- gamma_deriv(
+        a = theta[1], 
+        b = theta[2], 
+        theta1 = theta[3], 
+        y = y,
+        x = x
+      )
+    } else {
+      res <- gamma_deriv(
+        a = theta[1], 
+        theta1 = theta[2], 
+        y = y,
+        x = x
+      )
+    }
+  }
+  
+  gamma_nll_fn <- function(theta, y, x) {
+    res <- eval_deriv(theta, y, x)
+    
+    fn <- sum(as.numeric(res))
+    
+    - fn
+  }
+   
+  gamma_grad_fn <- function(theta, y, x) {
+    res <- eval_deriv(theta, y, x)
+    
+    grad <- apply(attr(res, 'gradient'), 2, sum)
+    
+    - grad
+  }
+  
+  starting_vals <- matrix(NA, nrow = n_starts, ncol = p + 2)
+  
+  for(i in 1:n_starts) {
+    starting_vals[i, ] <- runif(p + 2, 0, 10)
+  }
+  
+  xx <- seq(-3, 3, 0.01)
+  
+  fit_gamma <- tryCatch(
+    pick_optim(fn = gamma_nll_fn, gr = gamma_grad_fn, starting_vals, y = y, x = x),
+    error = function(e) {
+      print(e)
+      
+      list(
+        model = list(value = NULL, hessian = diag(length(starting_vals[i, ])), convergence = 0),
+        pred = vector(mode = 'integer', length = length(xx)), 
+        up = vector(mode = 'integer', length = length(xx)), 
+        low = vector(mode = 'integer', length = length(xx)),
+        d = p + 2,
+        title = paste0("No model fit")
+      )
+    }
+  )
+  
+  if(!is.null(fit_gamma$title)) return(fit_gamma)
+  
+  lin_pred <- NULL
+  up <- NULL
+  low <- NULL
+  
+  for(i in 1:length(xx)) {
+    x_vec <- 1
+    if(p > 0) {
+      for(j in 1:p) x_vec <- append(x_vec, xx[i] ^ j)
+    }
+    
+    lin_pred[i] <- as.numeric(crossprod(fit_gamma$par[c(1:(p+1))], x_vec))
+    
+    se <- sqrt(crossprod(x_vec, solve(fit_gamma$hessian)[1:(p+1), 1:(p+1)]) %*% x_vec)
+    
+    up[i] <- lin_pred[i] + 1.96 * se
+    low[i] <- lin_pred[i] - 1.96 * se
+  }
+  
+  if(link == "identity") {
+    lin_pred <- 1 / lin_pred
+    up <- 1 / up
+    low <- 1 / low
+  } else if(link == "log") {
+    lin_pred <- 1 / exp(lin_pred)
+    up <- 1 / exp(up)
+    low <- 1 / exp(low)
+  } else if(link == "inverse") {
+    lin_pred <- lin_pred
+    up <- up
+    low <- low
+  } else if(link == "sin") {
+    lin_pred <- 1 / asin(lin_pred)
+    up <- 1 / asin(up)
+    low <- 1 / asin(low)
+  }
 
-for(i in 1:n_starts) {
-  q7_starting_vals[i, ] <- c(
-    rnorm(1),
-    rnorm(1),
-    runif(1, 0, 20),
-    rnorm(1),
-    rnorm(1),
-    runif(1, 0, 20)
+  list(
+    model = fit_gamma,
+    pred = lin_pred, 
+    up = up, 
+    low = low,
+    d = p + 2,
+    title = paste0("p = ", p, ", link = ", link)
   )
 }
 
-f_theta1_expr <- rlang::expr(a + b * x + c * x ^ 2)
+par(mfrow = c(3, 2))
 
-f_theta2_expr <- rlang::expr(d + e * x + f * x ^ 2)
+links <- c("identity", "inverse", "log")
 
-f_log_dens_inside_sum_q7 <- rlang::expr(
-  - log(1 + (y / (!!f_theta2_expr +  2 * j)) ^ 2)
-)
+fit_gamma_q7 <- list()
 
-f_log_dens_outside_sum_q7 <- rlang::expr(
-  + atan(!!f_theta1_expr) * y 
-  + !!f_theta2_expr * log(cos(atan(!!f_theta1_expr)))
-  + log(2) * (!!f_theta2_expr - 2)
-  + 2 * lgamma(!!f_theta2_expr / 2)
-  - log(pi)
-  - lgamma(!!f_theta2_expr)
-)
-
-f_deriv_inside_sum_q7 <- deriv(expr = f_log_dens_inside_sum_q7, c("a", "b", "c", "d", "e", "f"), function.arg = c("a", "b", "c", "d", "e", "f", "y", "x", "j"))
-f_deriv_outside_sum_q7 <- deriv(expr = f_log_dens_outside_sum_q7, c("a", "b", "c", "d", "e", "f"), function.arg = c("a", "b", "c", "d", "e", "f", "y", "x"))
-
-f_nll_fn_q7 <- function(theta, y, x, N = 10000) {
-  a <- theta[1]
-  b <- theta[2]
-  c <- theta[3]
-  d <- theta[4]
-  e <- theta[5]
-  f <- theta[6]
-  
-  inside_sum <- NA
-  
-  for(j in 0:N) {
-    res <- f_deriv_inside_sum_q7(a = a, b = b, c = c, d = d, e = e, f = f, y = y, x = x, j = j)
-    inside_sum[j + 1] <- sum(as.numeric(res))
+for(i in 1:length(links)) {
+  for(j in 2:3) {
+    fit_gamma_q7 <- append(fit_gamma_q7, list(fit_gamma_model(p = j - 1, link = links[i])))
   }
-  
-  g_sum <- sum(inside_sum)
-  
-  res <- f_deriv_outside_sum_q7(a = a, b = b, c = c, d = d, e = e, f = f, y = y, x = x)
-  
-  fn <- sum(as.numeric(res)) + g_sum
-  
-  - fn
 }
 
-f_grad_fn_q7 <- function(theta, y, x, N = 10000) {
-  a <- theta[1]
-  b <- theta[2]
-  c <- theta[3]
-  d <- theta[4]
-  e <- theta[5]
-  f <- theta[6]
+xx <- seq(-3, 3, 0.01)
+
+for(i in 1:length(fit_gamma_q7)) {
+  plot(y ~ x, data = data_q7, pch = 20, xlim = c(-3, 3))
   
-  inside_sum <- NA
+  pred <- fit_gamma_q7[[i]]$pred
+  up <- fit_gamma_q7[[i]]$up
+  low <- fit_gamma_q7[[i]]$low
   
-  for(j in 0:N) {
-    res <- f_deriv_inside_sum_q7(a = a, b = b, c = c, d = d, e = e, f = f, y = y, x = x, j = j)
-    inside_sum[j + 1] <- sum(attr(res,"gradient"))
+  lines(xx, pred, col = 'red') 
+  lines(xx, up, col = 'red') 
+  lines(xx, low, col = 'red')
+  
+  title(main = fit_gamma_q7[[i]]$title)
+}
+```
+
+We can compare these models with AIC and pick the best ranking model:
+
+```{r}
+calc_aic <- function(model, d) 2 * (model$value + d)
+
+min_aic_ind <- which.min(sapply(fit_gamma_q7, \(x) calc_aic(x$model, x$d)))
+
+best_gamma_fit <- fit_gamma_q7[[min_aic_ind]]
+
+best_gamma_fit$title
+```
+
+So our best model in the Gamma case out of the ones we considered is $\mu(\boldsymbol\theta^{(1)},x)=\theta_1+\theta_2x+\theta_3x^2$. The results from this model are plotted below:
+
+```{r}
+par(mfrow = c(1, 1))
+
+pred <- best_gamma_fit$pred
+up <- best_gamma_fit$up
+low <- best_gamma_fit$low
+
+plot(y ~ x, data = data_q7, pch = 20, xlim = c(-3, 3))
+lines(xx, up, col = 'red') 
+lines(xx, pred, col = 'red') 
+lines(xx, low, col = 'red')
+title(main = "Gamma approximation to the data")
+```
+
+
+Finally, for $\mathcal F_{normal}$, we can rearrange the expression for the density so that
+$$f(y|\lambda_1,\lambda_2)=\exp(\frac{\lambda_1y-\frac{\lambda_1^2}{2}}{\lambda_2^2}-\frac{y^2}{2\lambda_2^2}-\frac{\log(2\pi\lambda_2^2)}{2})$$
+
+```{r, fig.height = 10}
+fit_norm_model <- function(p = 2, link = 'identity', y = data_q7$y, x = data_q7$x, n_starts = 100) {
+  lambda_expr <- expr(a)
+  
+  if(p > 0) {
+    for(i in 1:p) lambda_expr <- expr(!!lambda_expr + !!sym(letters[i + 1]) * x ^ !!as.numeric(i))
   }
   
-  g_sum <- sum(inside_sum, na.rm = T)
+  if(link == "identity") {
+    lambda_expr <- lambda_expr
+  } else if(link == "log") {
+    lambda_expr <- expr(exp(!!lambda_expr))
+  } else if(link == "inverse") {
+    lambda_expr <- expr(1/(!!lambda_expr))
+  } else {
+    stop("Try a different link function")
+  }
   
-  res <- f_deriv_outside_sum_q7(a = a, b = b, c = c, d = d, e = e, f = f, y = y, x = x)
+  # reparam with lambda2 = exp(theta2)
+  log_dens_norm_expr <- rlang::expr(
+    + !!lambda_expr * y / exp(theta2) ^ 2
+    - (!!lambda_expr) ^ 2 / (2 * exp(theta2) ^ 2)
+    - y ^ 2 / (2 * exp(theta2) ^ 2)
+    - log(2 * pi * exp(theta2) ^ 2) / 2
+  )
   
-  grad <- apply(attr(res,"gradient"), 2, sum) + g_sum
+  if(p == 2) {
+    norm_deriv <- deriv(log_dens_norm_expr, c("a", "b", "c", "theta2"), function.arg = c("a", "b", "c", "theta2", "y", "x"))
+  } else if(p == 1) {
+    norm_deriv <- deriv(log_dens_norm_expr, c("a", "b", "theta2"), function.arg = c("a", "b", "theta2", "y", "x"))
+  } else {
+    norm_deriv <- deriv(log_dens_norm_expr, c("a", "theta2"), function.arg = c("a", "theta2", "y", "x"))
+  }
   
-  - grad
+  eval_deriv <- function(theta, y, x) {
+    if(length(theta) == 4) {
+      res <- norm_deriv(
+        a = theta[1], 
+        b = theta[2], 
+        c = theta[3], 
+        theta2 = theta[4], 
+        y = y,
+        x = x
+      )
+    } else if(length(theta) == 3) {
+      res <- norm_deriv(
+        a = theta[1], 
+        b = theta[2], 
+        theta2 = theta[3], 
+        y = y,
+        x = x
+      )
+    } else {
+      res <- norm_deriv(
+        a = theta[1], 
+        theta2 = theta[2], 
+        y = y,
+        x = x
+      )
+    }
+  }
+  
+  norm_nll_fn <- function(theta, y, x) {
+    res <- eval_deriv(theta, y, x)
+    
+    fn <- sum(as.numeric(res))
+    
+    - fn
+  }
+   
+  norm_grad_fn <- function(theta, y, x) {
+    res <- eval_deriv(theta, y, x)
+    
+    grad <- apply(attr(res, 'gradient'), 2, sum)
+    
+    - grad
+  }
+  
+  starting_vals <- matrix(NA, nrow = n_starts, ncol = p + 2)
+  
+  for(i in 1:n_starts) {
+    starting_vals[i, ] <- rnorm(p + 2)
+  }
+  
+  fit_norm <- pick_optim(fn = norm_nll_fn, gr = norm_grad_fn, starting_vals, y = y, x = x)
+  
+  lin_pred <- NULL
+  up <- NULL
+  low <- NULL
+  
+  xx <- seq(-3, 3, 0.01)
+  
+  for(i in 1:length(xx)) {
+    x_vec <- 1
+    if(p > 0) {
+      for(j in 1:p) x_vec <- append(x_vec, xx[i] ^ j)
+    }
+    
+    lin_pred[i] <- as.numeric(crossprod(fit_norm$par[c(1:(p+1))], x_vec))
+    
+    se <- sqrt(crossprod(x_vec, solve(fit_norm$hessian)[1:(p+1), 1:(p+1)]) %*% x_vec)
+    
+    up[i] <- lin_pred[i] + 1.96 * se
+    low[i] <- lin_pred[i] - 1.96 * se
+  }
+  
+  if(link == "identity") {
+    lin_pred <- lin_pred
+    up <- up
+    low <- low
+  } else if(link == "log") {
+    lin_pred <- exp(lin_pred)
+    up <- exp(up)
+    low <- exp(low)
+  } else if(link == "inverse") {
+    lin_pred <- 1 / lin_pred
+    up <- 1 / up
+    low <- 1 / low
+  }
+  
+  list(
+    model = fit_norm,
+    pred = lin_pred, 
+    up = up, 
+    low = low,
+    d = p + 2,
+    title = paste0("p = ", p, ", link = ", link)
+  )
 }
 
-pick_optim(fn = f_nll_fn_q7, gr = f_grad_fn_q7, starting_vals = q7_starting_vals, y = data_q7$y, x = data_q7$x, N = 1000)
+par(mfrow = c(3, 3))
+
+links <- c("identity", "inverse", "log")
+
+fit_norm_q7 <- NULL
+
+for(i in 1:length(links)) {
+  for(j in 1:3) {
+    fit_norm_q7 <- append(fit_norm_q7, list(fit_norm_model(p = j - 1, link = links[i])))
+  }
+}
+
+xx <- seq(-3, 3, 0.01)
+
+for(i in 1:length(fit_norm_q7)) {
+  plot(y ~ x, data = data_q7, pch = 20, xlim = c(-3, 3))
+  
+  pred <- fit_norm_q7[[i]]$pred
+  up <- fit_norm_q7[[i]]$up
+  low <- fit_norm_q7[[i]]$low
+  
+  lines(xx, pred, col = 'red') 
+  lines(xx, up, col = 'red') 
+  lines(xx, low, col = 'red')
+  
+  title(main = fit_norm_q7[[i]]$title)
+}
+```
+
+As before, we can select the model with the lowest AIC:
+
+```{r}
+min_aic_ind <- which.min(sapply(fit_norm_q7, \(x) calc_aic(x$model, x$d)))
+
+best_norm_fit <- fit_norm_q7[[min_aic_ind]]
+
+best_norm_fit$title
+```
+
+That is, the model $\mu(\boldsymbol\theta^{(1)},x)=\theta_1+\theta_2x+\theta_3x^2$. We plot this below:
+
+```{r}
+par(mfrow = c(1, 1))
+
+pred <- best_norm_fit$pred
+up <- best_norm_fit$up
+low <- best_norm_fit$low
+
+plot(y ~ x, data = data_q7, pch = 20, xlim = c(-3, 3))
+lines(xx, pred, col = 'red') 
+lines(xx, up, col = 'red') 
+lines(xx, low, col = 'red')
+title(main = "Normal approximation to the data")
+```
+
+Comparing the two models, we see that the Normal distribution has smaller confidence intervals and actually seems to extrapolate to $(-3,3)$ better. However, when we select the best model using AIC, we actually choose the Gamma model:
+
+```{r}
+calc_aic(best_norm_fit$model, best_norm_fit$d) < calc_aic(best_gamma_fit$model, best_gamma_fit$d)
 ```
 
 ## Question 8 [4 marks]
