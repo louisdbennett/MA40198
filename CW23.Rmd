@@ -29,7 +29,7 @@ Plot 40 contours of the negative loglikelihood function of the parameter $\bolds
 
 ## Solution to Question 1
 
-We use a reparameterisation $\boldsymbol{\lambda} = (\lambda_1,\lambda_2)^T = (tan^{-1}(\theta_1),e^{\theta_2})^T$.
+We use a reparameterisation $\boldsymbol{\lambda} = (\lambda_1,\lambda_2)^T = (tan^{-1}(\theta_1),e^{\theta_2})^T$. We choose the inverse tan function to ensure $-frac{\pi}{2}<\lambda_1<\frac{\pi}{2}$ and the inverse logarithm (exponential) function to ensure $\lambda_2 > 0$.
 
 ```{r}
 log_dens_inside_sum <- expression(
@@ -83,7 +83,7 @@ grad_fn <- function(theta, y, N = 10000) {
 }
 ```
 
-We plot the contour of the negative log likelihood, $\phi(\boldsymbol{\lambda}|y)$ here:
+We plot the contour of the negative log likelihood, $\phi(\boldsymbol{\lambda}|y)$, here:
 
 ```{r, fig.height=6, fig.align='center', cache=TRUE, eval=TRUE}
 N_val <- 10000
@@ -116,6 +116,8 @@ contour(
   main = expression(bold("Contours of \u03D5(\u03BB|y)"))
 )
 ```
+The circular region in the plot above will contain the global minimum, which is the MLE we find in Question 2. 
+
 
 ## Question 2 [6 marks]
 
@@ -128,7 +130,7 @@ L0 <- read.table("https://people.bath.ac.uk/kai21/ASI/CW_2023/starting_vals_q2.t
 
 ## Solution to Question 2
 
-We run optim over each starting value in the dataframe and pick the MLE, $\boldsymbol{\widehat{\lambda}}$, with the lowest value of $\phi(\boldsymbol{\widehat{\lambda}})$.
+We run the function optim over each starting value in the dataframe and pick the MLE, $\boldsymbol{\widehat{\lambda}}$, with the lowest value of $\phi(\boldsymbol{\widehat{\lambda}})$.
 
 ```{r, cache=TRUE}
 reparam <- function(lambda) c(tan(lambda[1]), log(lambda[2]))
@@ -257,7 +259,7 @@ plot(
 title(expression(bold(paste("Sensitivity of ", hat("\u03BB"), " to N"))), line = -2, outer = TRUE)
 ```
 
-We can see that $\boldsymbol{\hat\lambda}$ is very sensitive to $N$ at smaller values (up to $N^3$) but then becomes very consistent as $N$ grows larger, and actually doesn't really change at all up to $N^6$.
+We can see that $\boldsymbol{\hat\lambda}$ is very sensitive to $N$ at smaller values (up to $N^3$) but then becomes very consistent as $N$ grows larger, and we observe minimal changes as $N$ increases to $N^6$.
 
 ## Question 4 [4 marks]
 
@@ -369,7 +371,7 @@ Compute an asymptotic 95% confidence interval for the unknown parameter $\lambda
 First we compute an asymptotic 95% confidence interval using $\hat{\lambda}_2$. By results in lectures (under Assumptions *A1* - *A5*):
 $$\widetilde{\boldsymbol{\mathcal I}(\boldsymbol{\theta}^*)}^{1/2}(\widehat{\boldsymbol{\theta}}_n(\boldsymbol{\mathcal Y})-\boldsymbol{\theta}^*)\stackrel{d}{\to} N(\boldsymbol{0}_{p+m},\boldsymbol{I}_{p+m})$$
 
-Where $\widetilde{\boldsymbol{\mathcal I}(\boldsymbol{\theta}^*)}^{1/2}$ is our estimator to the variance, as defined in lectures.
+Where $\widetilde{\boldsymbol{\mathcal I}(\boldsymbol{\theta}^*)}$ is our estimator to the variance, as defined in lectures.
 
 ```{r}
 asymp_var <- solve(fit_q2$hessian)
@@ -1230,7 +1232,7 @@ lines(xx, low, col = 'red')
 title(main = "Normal approximation to the data")
 ```
 
-All three models actually make very similar estimations of the mean function. This is likely since they all use the same link function, so potentially indicates that we should try a wider range of link functions if we ran the code again. The confidence intervals all follow a similar pattern, where they are closer around the clumps of data, but widen away from the data. Out of the 3, the Normal distribution seems to have the smallest confidence intervals and Gamma the biggest, although the $F_1$ confidence intervals are very close to the Gamma approximation.
+All three models actually make very similar estimations of the mean function. This is likely since they all use the same link function, so this potentially indicates that we should try a wider range of link functions if we ran the code again. The confidence intervals all follow a similar pattern, where they are closer around the clumps of data, but widen away from the data. Out of the 3 models, the Normal distribution seems to have the smallest confidence intervals and Gamma the biggest, although the $F_1$ confidence intervals are very close to the Gamma approximation.
 
 We calculate AIC for all 3 models and select the lowest:
 
@@ -1280,7 +1282,7 @@ fits <- list(
 cis <- lapply(fits, calculate_dagger_ci)
 ```
 
-We can use these confidence intervals to calculate confidence intervals for $\mu(\boldsymbol{\theta}^{(1)}_\dagger,x)$:
+We can use these confidence intervals to calculate confidence intervals for $\mu(\boldsymbol{\theta}^{(1)}_\dagger,x)$ using the Delta Method:
 
 ```{r, fig.height=10}
 par(mfrow = c(3,1))
